@@ -58,6 +58,20 @@ class AriadneSkillTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, skill)
 
+    def test_runtime_policy_preserves_apply_authorization_gate(self):
+        policy = (SKILL / "references" / "lifecycle-policy.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        for phrase in (
+            "mutation authorization gate",
+            "explicit user authorization",
+            "current conversation",
+            "exact operation",
+            "broad prior approval is insufficient",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, policy)
+
     def test_controller_uses_only_python_standard_library(self):
         tree = ast.parse((PLUGIN / "lifecycle.py").read_text(encoding="utf-8"))
         imports = set()

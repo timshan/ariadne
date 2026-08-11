@@ -2,7 +2,7 @@
 change_id: SKILL-LIFECYCLE-001
 title: Skill development, formal, and release lifecycle control
 risk_tier: high-risk
-status: verification-ready
+status: verified
 owner: Tim Shan
 contributors: Tim Shan; OpenAI Codex
 date: 2026-08-11
@@ -200,12 +200,12 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-002, REQ-004 | AC-002 | tests/test_versioning.py | lifecycle.py manifest/version checks | Pass |
 | REQ-003 | AC-003 | tests/test_inspect.py | lifecycle.py discovery audit | Pass |
 | REQ-005 | AC-004 | tests/test_artifact.py | lifecycle.py deterministic ZIP and lock | Pass |
-| REQ-006 | AC-005 | tests/test_dry_run.py and tests/test_ariadne_skill.py | controller dry-run and Skill authorization contract | Pass |
+| REQ-006 | AC-005 | tests/test_dry_run.py and tests/test_ariadne_skill.py | controller dry-run, Skill authorization, and packaged policy contracts | Pass |
 | REQ-007 | AC-006 | tests/test_release.py | lifecycle.py release verifier | Pass |
 | REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pass |
 | REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pass |
 | REQ-010 | AC-009 | tests/test_policy_contract.py and tests/test_ariadne_skill.py | packaged policy and Plugin boundary | Pass |
-| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 30-test suite, Plugin/Skill validators, and isolated nested-layout install pass. |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 31-test suite, Plugin/Skill validators, isolated nested-layout install, and two adversarial-review PASS verdicts. |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -217,9 +217,9 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 ## Verification evidence
 
 - RED evidence: the repository-marketplace test failed before `plugins/ariadne/` and its marketplace existed.
-- GREEN evidence: 30 unit and subprocess tests pass after the package-boundary, cache-leak, mutation-authorization, and formal-channel boundary refactors.
+- GREEN evidence: 31 unit and subprocess tests pass after the package-boundary, cache-leak, mutation-authorization, packaged-policy, and formal-channel boundary refactors.
 - Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
 - Fresh verification: Plugin and Skill validators pass on `plugins/ariadne/`.
 - Realistic outcome check: an isolated Codex profile installed only `ariadne@ariadne` from the nested marketplace; the installed launcher exposed all controller commands and contained no source Python cache.
 - Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
-- Remaining risks: GitHub universal directory submission remains outside v1; public installation commands require verification after repository creation.
+- Remaining risks: GitHub universal directory submission remains outside v1; public installation commands require verification after repository creation. w5:p3 returned PASS at commits `905ac1f` and `9c6e9b2`; both report-contract and source-integrity checks passed, and the only final low-risk recommendation was closed by the packaged-policy regression test.
