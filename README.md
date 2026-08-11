@@ -122,7 +122,7 @@ The design and expected behavior are documented in [docs/SDD.md](docs/SDD.md). C
 
 ## Project contributors
 
-- Tim Shan — maintainer, product direction, review, and release accountability
+- Timshan — maintainer, product direction, review, and release accountability
 - OpenAI Codex — AI coding collaborator for design analysis, implementation, tests, and documentation; materially assisted commits use `Co-authored-by: Codex <noreply@openai.com>`
 
 ## README references
