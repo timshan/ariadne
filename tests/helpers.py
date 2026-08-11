@@ -21,9 +21,10 @@ def init_repo(path: Path, version: str = "1.0.0") -> Path:
                 "version": version,
                 "description": "A sample plugin used by lifecycle tests.",
                 "author": {"name": "Tests"},
+                "skills": "./skills/",
                 "interface": {
-                    "display_name": "Sample Plugin",
-                    "short_description": "Lifecycle test fixture",
+                    "displayName": "Sample Plugin",
+                    "shortDescription": "Lifecycle test fixture",
                 },
             }
         ),
@@ -36,7 +37,22 @@ def init_repo(path: Path, version: str = "1.0.0") -> Path:
         encoding="utf-8",
     )
     (path / "lifecycle.json").write_text(
-        json.dumps({"plugin_path": ".", "checks": []}), encoding="utf-8"
+        json.dumps(
+            {
+                "plugin_path": ".",
+                "checks": [],
+                "independence": {
+                    "standalone_checks": [
+                        [
+                            "python3",
+                            "-c",
+                            "from pathlib import Path; assert Path('skills/sample/SKILL.md').is_file()",
+                        ]
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
     )
     run("git", "add", ".", cwd=path)
     run("git", "commit", "-m", "initial", cwd=path)

@@ -1,7 +1,7 @@
 {
   "name": "ariadne",
-  "version": "1.0.0",
-  "description": "Standalone lifecycle control for developing, promoting, releasing, and rolling back self-authored Codex Skills.",
+  "version": "1.1.0",
+  "description": "Standalone lifecycle control with cross-Skill dependency scanning and isolated-install assurance for self-authored Codex Skills.",
   "author": {
     "name": "Tim Shan",
     "url": "https://github.com/timshan"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Ariadne",
     "shortDescription": "Keep Skill development, formal, and release versions separate",
-    "longDescription": "Audits Skill discovery, enforces develop/main boundaries, creates deterministic formal artifacts, and prevents release drift.",
+    "longDescription": "Rejects cross-Skill dependencies, verifies exact Plugins in isolated profiles, enforces develop/main boundaries, creates deterministic formal artifacts, and prevents release drift.",
     "developerName": "Tim Shan",
     "category": "Developer Tools",
     "capabilities": [

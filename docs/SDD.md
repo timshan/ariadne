@@ -1,6 +1,6 @@
 ---
-change_id: SKILL-LIFECYCLE-001
-title: Skill development, formal, and release lifecycle control
+change_id: SKILL-LIFECYCLE-002
+title: Skill lifecycle control with independent-install assurance
 risk_tier: high-risk
 status: verified
 owner: Tim Shan
@@ -18,12 +18,15 @@ recovery: Preserve hashes and Git refs before mutation; retain legacy runtime co
 
 Goal: provide one deterministic, auditable, standalone Ariadne Skill and bundled control plane that keeps mutable Skill development, locally executable formal versions, and externally published releases from being discovered or modified as if they were the same version, even when no other custom Skill is installed.
 
+First functional extension goal: require every promoted managed Skill to contain no explicit dependency on another custom Skill and to pass installation plus project-declared core checks in a fresh Codex profile that contains only the exact packaged Plugin.
+
 Non-goals:
 
 - Do not replace Git, Codex Plugin validation, Skill validation, or human authorization.
 - Do not introduce CI, mandatory PRs, automatic dependency installation, telemetry, or automatic external publishing.
 - Do not overwrite managed repositories or current standalone Skills during inventory.
 - Do not treat repository-only documentation changes as Plugin runtime releases.
+- Do not claim to detect unattributed semantic copying when packaged text contains no external Skill name, `$skill-name` call, path, or other machine-detectable reference.
 
 ## Current state and expected outcomes
 
@@ -41,7 +44,9 @@ Current:
 | OUT-003 | Release cannot drift from formal | Release command rejects any byte or provenance mismatch. |
 | OUT-004 | Existing runtime remains recoverable | Legacy inventory contains path, Skill name, hash, source state, and recovery action before migration. |
 | OUT-005 | Personal workflow stays light | Python standard library only; mutation requires `--apply`; no CI or service dependency. |
-| OUT-006 | Lifecycle control works as an independent Skill | An isolated Codex profile containing only the Ariadne Plugin discovers `$ariadne`, and its bundled launcher exposes all controller commands. |
+| OUT-006 | Lifecycle control works as an independent Skill | An isolated Codex profile containing only the Ariadne Plugin discovers `$ariadne`, and its bundled launcher exposes all controller commands including `independence`. |
+| OUT-007 | Managed payloads do not call another custom Skill | Static independence report contains zero external Skill references before promotion. |
+| OUT-008 | Managed payloads install and execute their declared core probe alone | Exact artifact installs as the sole enabled Plugin in fresh `HOME`／`CODEX_HOME`; every `independence.standalone_checks` command exits zero from the installed payload. |
 
 ## Requirements
 
@@ -56,6 +61,11 @@ Current:
 - REQ-009: Preserve dirty repositories and legacy runtimes during inventory; no reconciliation or removal occurs without comparison, tests, and a recovery copy.
 - REQ-010: Package all lifecycle authority inside Ariadne while keeping repository-only development material outside the installable Plugin.
 - REQ-011: Package the complete policy, launcher, and standard-library controller as the `ariadne` Plugin/Skill without any runtime dependency on another Skill, review agent, CI service, or package manager.
+- REQ-012: Require an `independence` contract with non-empty argument-array `standalone_checks`; reject missing, empty, shell-string, or malformed checks.
+- REQ-013: Scan every packaged UTF-8 instruction/config/script file for explicit `$other-skill` calls and names of Skills discovered outside the package; reject findings unless the name belongs to the same packaged Plugin.
+- REQ-014: Build the exact allowlisted artifact, install it from a temporary local marketplace into fresh `HOME` and `CODEX_HOME`, verify that it is the sole enabled installed Plugin with the expected name/version, and run every standalone check from the installed cache before promotion may pass.
+- REQ-015: Hash the exact allowlisted payload before repository checks, reject any post-check drift, re-run the dependency scan, and require the later formal artifact SHA-256 to equal the standalone-validated artifact.
+- REQ-016: Spawn Codex and standalone checks with resolved absolute executables and an explicit minimal environment; do not inherit arbitrary caller variables or the caller's complete `PATH`.
 
 ## Acceptance criteria
 
@@ -68,7 +78,12 @@ Current:
 - AC-007 (REQ-008): Given two formal versions, when rollback selects the older version, then the current marketplace payload and lock point to the older checksum while immutable version directories remain unchanged.
 - AC-008 (REQ-009): Given a dirty repository and a differing standalone runtime, when inventory runs, then both are recorded separately and neither is copied over the other.
 - AC-009 (REQ-010): Given only the packaged Ariadne Plugin, when Codex invokes `$ariadne`, then the complete policy and controller remain available without repository-only files or another Skill.
-- AC-010 (REQ-011): Given an isolated Codex profile with only Ariadne installed, when Plugin discovery and the bundled launcher are invoked, then `$ariadne` is available and `inspect`, `artifact`, `promote`, `release`, and `rollback` commands work without another Skill.
+- AC-010 (REQ-011): Given an isolated Codex profile with only Ariadne installed, when Plugin discovery and the bundled launcher are invoked, then `$ariadne` is available and `inspect`, `independence`, `artifact`, `promote`, `release`, and `rollback` commands work without another Skill.
+- AC-011 (REQ-012): Given a missing or malformed independence contract, when `independence` or promotion runs, then it exits nonzero with `E_INDEPENDENCE_CONFIG` before Git, formal channel, runtime, or external state changes.
+- AC-012 (REQ-013): Given packaged instructions containing `$other-skill` or the exact name of an externally discovered Skill, when the independence audit runs, then it reports file, line, reference, and kind and exits nonzero with `E_SKILL_DEPENDENCY`.
+- AC-013 (REQ-014): Given a self-contained payload and valid checks, when standalone verification runs, then a fresh isolated profile installs only the expected Plugin and all checks pass from `installedPath`; an install, identity, extra-Plugin, or check failure blocks promotion.
+- AC-014 (REQ-015): Given a repository check that modifies a packaged file, when promotion preflight runs, then it fails with `E_PAYLOAD_CHANGED` before standalone acceptance; a later formal build with different ignored payload bytes also fails.
+- AC-015 (REQ-016): Given ambient variables and a caller-only `PATH` directory, when standalone acceptance runs, then neither reaches Codex or the installed probe unless explicitly allowlisted as an isolated value or required executable directory.
 
 ## Constraints, assumptions, and unknowns
 
@@ -99,7 +114,23 @@ python3 lifecycle.py release --repo PATH --version X.Y.Z [--apply]
 python3 lifecycle.py rollback --plugin NAME --version X.Y.Z [--apply]
 ```
 
-Each managed repository provides `lifecycle.json` with `plugin_path`, optional `package_paths` allowlist, `checks` as argument arrays, and discovery roots. Generated formal state is outside source at `~/.local/share/ariadne/formal`. The formal lock contains only non-secret provenance:
+Each managed repository provides `lifecycle.json` with `plugin_path`, optional `package_paths` allowlist, `checks` as argument arrays, and discovery roots. Generated formal state is outside source at `~/.local/share/ariadne/formal`.
+
+The first extension adds a mandatory independent-install contract:
+
+```json
+{
+  "independence": {
+    "standalone_checks": [
+      ["python3", "skills/example/scripts/example.py", "--self-test"]
+    ]
+  }
+}
+```
+
+The checks execute without a shell from the Codex-installed cache path. Ariadne replaces `HOME`, `CODEX_HOME`, and XDG user directories with temporary empty directories for this gate while resolving and isolating only the executable and shebang-interpreter directories actually required, not the caller's complete `PATH`. The gate proves package installation, Skill discovery metadata, and declared observable behavior; correctness beyond the declared probe remains the managed project's responsibility.
+
+The formal lock contains only non-secret provenance:
 
 ```json
 {
@@ -139,14 +170,18 @@ flowchart LR
 ~~~
 
 decision_question: Which transitions are legal, and where must a failed or repeated operation stop?
-traces: REQ-001, REQ-006, REQ-008, AC-001, AC-005, AC-007
+traces: REQ-001, REQ-006, REQ-008, REQ-014, REQ-015, REQ-016, AC-001, AC-005, AC-007, AC-013, AC-014, AC-015
 
 ~~~mermaid
 stateDiagram-v2
     [*] --> Development
     Development --> FormalPreflight: promote dry-run
     FormalPreflight --> Development: gate fails / no mutation
-    FormalPreflight --> Formal: --apply + all gates pass
+    FormalPreflight --> ProjectChecks: dependency scan + payload hash pass
+    ProjectChecks --> Development: check fails or payload changes
+    ProjectChecks --> IsolatedInstall: re-scan + same payload hash
+    IsolatedInstall --> Development: install or standalone check fails
+    IsolatedInstall --> Formal: exact Plugin is sole enabled install
     Formal --> Released: exact artifact + explicit --apply
     Formal --> Formal: idempotent repeat
     Released --> Released: idempotent repeat
@@ -162,6 +197,8 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 - Sensitive data or secret handling: never read or serialize tokens; invoke `gh` without exposing authentication; redact URL userinfo in diagnostics.
 - Abuse case and control: malicious paths, symlinks, `..`, duplicate names, dirty trees, moving tags, modified artifacts, and repeated external writes must be rejected before mutation.
 - Abuse case and control: configuration commands are arrays executed without a shell; configuration is accepted only from the explicitly selected repository.
+- Abuse case and control: packaged instructions can smuggle a dependency through `$other-skill`, a discovered Skill name, or an external Skill path; strict scanning reports the exact source location and blocks promotion.
+- Limitation: semantic paraphrases or copied logic without a detectable Skill identifier cannot be proven by static scanning; source review and provenance remain complementary evidence.
 
 ## Failure, security, and observability
 
@@ -173,6 +210,10 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 | Partial file update | Temp write/rename failure | Leave prior target intact and report stable error. |
 | Repeated push/release | Existing matching tag/release | Return idempotent success; conflicting target fails. |
 | Secret-bearing URL in error | URL userinfo detected | Redact before output or persistence. |
+| Explicit external Skill dependency | Any packaged finding | Fail with source path, line, reference, and kind; do not allow promotion. |
+| Standalone Plugin install or probe failure | Any nonzero command, wrong identity/version, or extra enabled Plugin | Fail in temporary isolated directories and retain source/formal state unchanged. |
+| Repository check mutates package | Exact payload hash changes after checks | Fail before standalone installation; unchanged bytes are re-scanned before acceptance. |
+| Ambient process contamination | Unlisted variable or caller-only `PATH` directory reaches the child | Replace inherited environment with isolated homes, fixed locale/temp, platform-required keys, and resolved executable directories. |
 
 ## Migration and reconciliation
 
@@ -185,12 +226,12 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 
 Outer acceptance or contract oracle: subprocess CLI tests over temporary Git repositories, Plugin trees, discovery roots, marketplace channels, and fake `gh`/`codex` executables.
 
-1. RED: Add failing SemVer, duplicate, symlink, deterministic artifact, dry-run, drift, idempotency, rollback, and legacy-preservation tests before implementation.
+1. RED: Add failing SemVer, duplicate, symlink, deterministic artifact, dry-run, drift, idempotency, rollback, legacy-preservation, cross-Skill reference, malformed independence contract, isolated install identity, standalone-check, mutating-check, artifact-binding, and ambient-environment tests before implementation.
 2. GREEN: Implement the smallest standard-library modules and CLI behavior to satisfy one vertical transition at a time.
 3. REFACTOR: Separate filesystem, Git, artifact, lock, and external command adapters while preserving subprocess-level contracts.
 4. CHECK: Run unit/CLI tests, Plugin and Skill validators, isolated install tests, source integrity checks, and independent review.
 
-Special evidence: migration rehearsal, source/runtime hash comparison, tag/artifact checksum match, duplicate discovery audit, redacted error test, and w5:p3 report.
+Special evidence: migration rehearsal, source/runtime hash comparison, tag/artifact checksum match, duplicate discovery audit, redacted error test, cross-Skill negative fixtures, exact isolated install, and w5:p3 report before formal promotion.
 
 ## Traceability
 
@@ -205,7 +246,12 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pass |
 | REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pass |
 | REQ-010 | AC-009 | tests/test_policy_contract.py and tests/test_ariadne_skill.py | packaged policy and Plugin boundary | Pass |
-| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 31-test suite, Plugin/Skill validators, isolated nested-layout install, and two adversarial-review PASS verdicts. |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | Pass; v1.0.0 public evidence plus v1.1.0 local isolated acceptance. |
+| REQ-012 | AC-011 | tests/test_independence.py | lifecycle.py independence contract parser | Pass |
+| REQ-013 | AC-012 | tests/test_independence.py | lifecycle.py packaged reference scanner | Pass |
+| REQ-014 | AC-013 | tests/test_independence.py and isolated profile acceptance | lifecycle.py temporary marketplace installer and standalone runner | Pass |
+| REQ-015 | AC-014 | tests/test_git_gates.py | lifecycle.py exact payload hash, post-check re-scan, and formal artifact binding | Pass |
+| REQ-016 | AC-015 | tests/test_independence.py | lifecycle.py absolute executable resolver and minimal subprocess environment | Pass |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -217,9 +263,9 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 ## Verification evidence
 
 - RED evidence: the repository-marketplace test failed before `plugins/ariadne/` and its marketplace existed.
-- GREEN evidence: 31 unit and subprocess tests pass after the package-boundary, cache-leak, mutation-authorization, packaged-policy, and formal-channel boundary refactors.
+- GREEN evidence: 44 unit and subprocess tests pass, including mutating repository-check rejection, formal artifact binding, ambient-variable exclusion, and caller-only `PATH` exclusion.
 - Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
-- Fresh verification: Plugin and Skill validators pass on `plugins/ariadne/`.
-- Realistic outcome check: an isolated Codex profile installed only `ariadne@ariadne` from the nested marketplace; the installed launcher exposed all controller commands and contained no source Python cache.
+- Fresh verification: Plugin and Skill validators pass on v1.1.0 `plugins/ariadne/`; `git diff --check` passes.
+- Realistic outcome check: `independence --repo . --json` found zero references against 11 external discovered Skill identities, installed only `ariadne@ariadne-standalone` 1.1.0 into a fresh profile, verified exact installed bytes under isolated `CODEX_HOME`, and passed the bundled launcher check.
 - Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
-- Remaining risks: GitHub universal directory submission remains outside v1; public installation commands require verification after repository creation. w5:p3 returned PASS at commits `905ac1f` and `9c6e9b2`; both report-contract and source-integrity checks passed, and the only final low-risk recommendation was closed by the packaged-policy regression test.
+- Remaining risks: static scanning cannot prove unattributed semantic provenance, and a weak project-declared standalone check can under-test behavior. The first w5:p3 review returned `PASS_WITH_RISKS`; the focused re-review returned `PASS`, closed R-01／R-02, and left only the now-corrected documentation wording observation. v1.1.0 remains on `develop` with no promotion, public isolated install, push, tag, or Release. Existing v1.0.0 formal/release bytes remain unchanged.

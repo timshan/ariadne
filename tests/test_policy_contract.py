@@ -14,6 +14,9 @@ class PolicyContractTests(unittest.TestCase):
             "fast-forward-only",
             "formal/vX.Y.Z",
             "vX.Y.Z",
+            "cross-Skill",
+            "standalone",
+            "sole enabled Plugin",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, policy)

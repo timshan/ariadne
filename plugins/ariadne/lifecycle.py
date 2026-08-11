@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,11 @@ from pathlib import Path
 FINAL_SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 SKIP_PARTS = {".git", "__pycache__", ".pytest_cache"}
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+SKILL_TOKEN = re.compile(r"(?<![\w-])\$([a-z][a-z0-9-]{0,63})(?![\w-])")
+SKILL_PATH = re.compile(
+    r"(?:~|/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)?/\.(?:codex|agents)/skills/([a-z][a-z0-9-]{0,63})(?![\w-])"
+)
+RELATIVE_SKILL_PATH = re.compile(r"(?<![\w-])skills/([a-z][a-z0-9-]{0,63})(?![\w-])")
 
 
 class LifecycleError(RuntimeError):
@@ -103,6 +109,20 @@ def hash_tree(root: Path) -> str:
         if path.is_symlink() or not path.is_file():
             continue
         relative = path.relative_to(root).as_posix().encode()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def hash_payload(plugin: Path, config: dict) -> str:
+    digest = hashlib.sha256()
+    paths = sorted(
+        _payload_paths(plugin, config),
+        key=lambda path: path.relative_to(plugin).as_posix(),
+    )
+    for path in paths:
+        relative = path.relative_to(plugin).as_posix().encode()
         digest.update(len(relative).to_bytes(8, "big"))
         digest.update(relative)
         digest.update(path.read_bytes())
@@ -228,6 +248,333 @@ def _payload_paths(plugin: Path, config: dict):
                 yield path
 
 
+def _independence_checks(config: dict) -> list[list[str]]:
+    contract = config.get("independence")
+    if not isinstance(contract, dict):
+        fail("E_INDEPENDENCE_CONFIG", "lifecycle.json requires an independence object")
+    checks = contract.get("standalone_checks")
+    if not isinstance(checks, list) or not checks:
+        fail("E_INDEPENDENCE_CONFIG", "independence.standalone_checks must be non-empty")
+    for command in checks:
+        if not isinstance(command, list) or not command or not all(isinstance(x, str) and x for x in command):
+            fail("E_INDEPENDENCE_CONFIG", f"invalid standalone check command: {command!r}")
+    return checks
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def scan_skill_dependencies(repo: Path) -> dict:
+    repo = Path(repo).resolve()
+    config, plugin, manifest = load_repo(repo)
+    _independence_checks(config)
+    payload = list(_payload_paths(plugin, config))
+    skill_files = [path for path in payload if path.name == "SKILL.md"]
+    packaged_skills = sorted({frontmatter_name(path) for path in skill_files})
+    packaged_skill_paths = {path.parent.name for path in skill_files}
+    own_references = set(packaged_skills) | packaged_skill_paths
+    if not packaged_skills:
+        fail("E_INDEPENDENCE_CONFIG", f"Plugin contains no packaged SKILL.md: {plugin}")
+
+    discovery_roots = []
+    for raw in config.get("discovery_roots", []):
+        candidate = Path(raw).expanduser()
+        discovery_roots.append(
+            candidate.resolve() if candidate.is_absolute() else (repo / candidate).resolve()
+        )
+    discovered = inspect_roots(discovery_roots)
+    external_names = sorted(
+        {
+            item["name"]
+            for item in discovered["skills"]
+            if item["name"] not in packaged_skills
+            and not _is_within(Path(item["path"]), plugin)
+        }
+    )
+    external_patterns = {
+        name: re.compile(rf"(?<![a-z0-9-]){re.escape(name)}(?![a-z0-9-])", re.IGNORECASE)
+        for name in external_names
+    }
+
+    findings = []
+    seen = set()
+
+    def record(path: Path, line_number: int, reference: str, kind: str) -> None:
+        if reference in own_references:
+            return
+        key = (path.relative_to(plugin).as_posix(), line_number, reference, kind)
+        if key in seen:
+            return
+        seen.add(key)
+        findings.append(
+            {
+                "file": key[0],
+                "line": line_number,
+                "reference": reference,
+                "kind": kind,
+            }
+        )
+
+    for path in payload:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for line_number, line in enumerate(text.splitlines(), 1):
+            for match in SKILL_TOKEN.finditer(line):
+                record(path, line_number, match.group(1), "dollar-call")
+            for pattern, kind in (
+                (SKILL_PATH, "absolute-skill-path"),
+                (RELATIVE_SKILL_PATH, "relative-skill-path"),
+            ):
+                for match in pattern.finditer(line):
+                    record(path, line_number, match.group(1), kind)
+            for name, pattern in external_patterns.items():
+                if pattern.search(line):
+                    record(path, line_number, name, "discovered-name")
+
+    report = {
+        "plugin": manifest["name"],
+        "version": manifest.get("version"),
+        "packaged_skills": packaged_skills,
+        "external_discovery_names": external_names,
+        "references": sorted(
+            findings,
+            key=lambda item: (item["file"], item["line"], item["reference"], item["kind"]),
+        ),
+    }
+    if report["references"]:
+        fail("E_SKILL_DEPENDENCY", json.dumps(report["references"], ensure_ascii=False))
+    return report
+
+
+def _run_with_environment(
+    command: list[str], code: str, *, cwd: Path | None = None, env: dict[str, str]
+) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        command, cwd=cwd, env=env, text=True, capture_output=True, check=False
+    )
+    if result.returncode:
+        fail(code, result.stderr.strip() or result.stdout.strip() or repr(command))
+    return result
+
+
+def _json_with_environment(
+    command: list[str], code: str, *, cwd: Path | None = None, env: dict[str, str]
+) -> dict:
+    result = _run_with_environment(command, code, cwd=cwd, env=env)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        fail(code, f"non-JSON output from {command[0]}: {exc}")
+
+
+def _resolve_executable(command: list[str], search_path: str, *, cwd: Path | None = None) -> list[str]:
+    executable = command[0]
+    if os.path.dirname(executable):
+        candidate = Path(executable)
+        if not candidate.is_absolute():
+            candidate = Path(cwd or Path.cwd()) / candidate
+        resolved = candidate.resolve()
+        if not resolved.is_file():
+            fail("E_STANDALONE_EXECUTABLE", f"executable does not exist: {executable}")
+    else:
+        found = shutil.which(executable, path=search_path)
+        if not found:
+            fail("E_STANDALONE_EXECUTABLE", f"executable is not available: {executable}")
+        resolved = Path(found).resolve()
+    return [str(resolved), *command[1:]]
+
+
+def _shebang_runtime(executable: Path, search_path: str) -> Path | None:
+    try:
+        first_line = executable.read_bytes()[:512].splitlines()[0].decode("utf-8")
+    except (OSError, IndexError, UnicodeDecodeError):
+        return None
+    if not first_line.startswith("#!"):
+        return None
+    try:
+        parts = shlex.split(first_line[2:].strip())
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    interpreter = parts[0]
+    if Path(interpreter).name == "env":
+        candidates = [part for part in parts[1:] if not part.startswith("-")]
+        if not candidates:
+            return None
+        interpreter = candidates[0]
+    found = shutil.which(interpreter, path=search_path)
+    return Path(found).resolve() if found else None
+
+
+def _isolated_environment(
+    root: Path,
+    executables: list[Path],
+    search_path: str,
+    values: dict[str, str],
+) -> dict[str, str]:
+    runtime_directories = [path.parent for path in executables]
+    for executable in executables:
+        runtime = _shebang_runtime(executable, search_path)
+        if runtime:
+            runtime_directories.append(runtime.parent)
+    runtime_directories.extend(Path(part) for part in os.defpath.split(os.pathsep) if part)
+    unique_directories = []
+    seen = set()
+    for directory in runtime_directories:
+        normalized = str(directory.resolve())
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_directories.append(normalized)
+    temporary = root / "tmp"
+    temporary.mkdir(exist_ok=True)
+    env = {
+        "HOME": values["HOME"],
+        "CODEX_HOME": values["CODEX_HOME"],
+        "XDG_CONFIG_HOME": values["XDG_CONFIG_HOME"],
+        "XDG_CACHE_HOME": values["XDG_CACHE_HOME"],
+        "XDG_DATA_HOME": values["XDG_DATA_HOME"],
+        "PATH": os.pathsep.join(unique_directories),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "TMPDIR": str(temporary),
+        "TMP": str(temporary),
+        "TEMP": str(temporary),
+        "NO_COLOR": "1",
+    }
+    env.update({key: value for key, value in values.items() if key.startswith("ARIADNE_STANDALONE_")})
+    for key in ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
+
+
+def verify_standalone_install(repo: Path, *, expected_payload_sha256: str | None = None) -> dict:
+    repo = Path(repo).resolve()
+    config, _, manifest = load_repo(repo)
+    checks = _independence_checks(config)
+    plugin = manifest["name"]
+    version = manifest.get("version", "")
+    require_final_semver(version)
+    marketplace_name = "ariadne-standalone"
+
+    with tempfile.TemporaryDirectory(prefix="ariadne-standalone-") as raw:
+        root = Path(raw)
+        artifact = root / f"{plugin}-{version}.zip"
+        build_artifact(repo, artifact)
+        marketplace = root / "marketplace"
+        payload = marketplace / "plugins" / plugin
+        _safe_extract(artifact, payload)
+        atomic_json(
+            marketplace / ".agents" / "plugins" / "marketplace.json",
+            {
+                "name": marketplace_name,
+                "interface": {"displayName": "Ariadne standalone acceptance"},
+                "plugins": [
+                    {
+                        "name": plugin,
+                        "source": {"source": "local", "path": f"./plugins/{plugin}"},
+                        "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+                        "category": "Developer Tools",
+                    }
+                ],
+            },
+        )
+        isolated_home = root / "home"
+        codex_home = root / "codex"
+        for directory in (
+            isolated_home,
+            codex_home,
+            root / "xdg-config",
+            root / "xdg-cache",
+            root / "xdg-data",
+        ):
+            directory.mkdir(parents=True)
+        payload_sha256 = hash_payload(payload, config)
+        if expected_payload_sha256 and payload_sha256 != expected_payload_sha256:
+            fail("E_PAYLOAD_CHANGED", "standalone artifact differs from the scanned payload")
+        search_path = os.environ.get("PATH", os.defpath)
+        codex = _resolve_executable(["codex"], search_path)[0]
+        environment_values = {
+            "HOME": str(isolated_home),
+            "CODEX_HOME": str(codex_home),
+            "XDG_CONFIG_HOME": str(root / "xdg-config"),
+            "XDG_CACHE_HOME": str(root / "xdg-cache"),
+            "XDG_DATA_HOME": str(root / "xdg-data"),
+            "ARIADNE_STANDALONE_PAYLOAD": str(payload),
+            "ARIADNE_STANDALONE_PLUGIN": plugin,
+            "ARIADNE_STANDALONE_VERSION": version,
+            "ARIADNE_STANDALONE_MARKETPLACE": marketplace_name,
+        }
+        env = _isolated_environment(root, [Path(codex)], search_path, environment_values)
+        _run_with_environment(
+            [codex, "plugin", "marketplace", "add", str(marketplace)],
+            "E_STANDALONE_INSTALL",
+            env=env,
+        )
+        installed = _json_with_environment(
+            [codex, "plugin", "add", f"{plugin}@{marketplace_name}", "--json"],
+            "E_STANDALONE_INSTALL",
+            env=env,
+        )
+        installed_path = Path(installed.get("installedPath", ""))
+        if (
+            installed.get("pluginId") != f"{plugin}@{marketplace_name}"
+            or installed.get("version") != version
+            or not installed_path.is_dir()
+            or not _is_within(installed_path, codex_home)
+            or not same_tree(payload, installed_path)
+        ):
+            fail("E_STANDALONE_IDENTITY", "installed Plugin does not match the exact packaged payload")
+        listing = _json_with_environment(
+            [codex, "plugin", "list", "--json"],
+            "E_STANDALONE_INSTALL",
+            env=env,
+        )
+        enabled = [item for item in listing.get("installed", []) if item.get("enabled") is True]
+        if len(enabled) != 1:
+            fail("E_STANDALONE_IDENTITY", f"isolated profile has {len(enabled)} enabled Plugins")
+        current = enabled[0]
+        if (
+            current.get("pluginId") != f"{plugin}@{marketplace_name}"
+            or current.get("version") != version
+            or current.get("installed") is not True
+        ):
+            fail("E_STANDALONE_IDENTITY", "isolated profile enabled the wrong Plugin identity")
+        resolved_checks = [
+            _resolve_executable(command, search_path, cwd=installed_path) for command in checks
+        ]
+        env = _isolated_environment(
+            root,
+            [Path(codex), *(Path(command[0]) for command in resolved_checks)],
+            search_path,
+            environment_values,
+        )
+        for command in resolved_checks:
+            _run_with_environment(command, "E_STANDALONE_CHECK", cwd=installed_path, env=env)
+        return {
+            "installed_plugin": f"{plugin}@{marketplace_name}",
+            "version": version,
+            "sole_enabled_plugin": True,
+            "payload_sha256": payload_sha256,
+            "artifact_sha256": sha256_file(artifact),
+            "checks_passed": len(checks),
+        }
+
+
+def independence_preflight(repo: Path) -> dict:
+    report = scan_skill_dependencies(repo)
+    standalone = verify_standalone_install(repo)
+    return {**report, "standalone": standalone, "independent": True}
+
+
 def build_artifact(repo: Path, output: Path) -> dict:
     repo = Path(repo).resolve()
     output = Path(output).resolve()
@@ -301,7 +648,20 @@ def promotion_preflight(repo: Path, version: str) -> dict:
     report = inspect_roots(audit_roots)
     if not report["formal_ready"]:
         fail("E_DISCOVERY", json.dumps({"duplicates": report["duplicates"], "symlinks": report["symlinks"]}))
+    dependency_report = scan_skill_dependencies(repo)
+    scanned_payload_sha256 = hash_payload(plugin, config)
     _run_checks(repo, config)
+    checked_payload_sha256 = hash_payload(plugin, config)
+    if checked_payload_sha256 != scanned_payload_sha256:
+        fail("E_PAYLOAD_CHANGED", "repository checks modified the scanned Plugin payload")
+    dependency_report = scan_skill_dependencies(repo)
+    independence = {
+        **dependency_report,
+        "standalone": verify_standalone_install(
+            repo, expected_payload_sha256=checked_payload_sha256
+        ),
+        "independent": True,
+    }
     return {
         "plugin": manifest["name"],
         "version": version,
@@ -309,6 +669,7 @@ def promotion_preflight(repo: Path, version: str) -> dict:
         "formal_tag": f"formal/v{version}",
         "config": config,
         "plugin_path": str(plugin),
+        "independence": independence,
     }
 
 
@@ -428,6 +789,9 @@ def promote(repo: Path, version: str, *, channel: Path | None = None, apply: boo
             or git_output(repo, "status", "--porcelain")
         ):
             fail("E_GIT_CHANGED", "repository changed after formal preflight")
+        expected_artifact = preflight["independence"]["standalone"]["artifact_sha256"]
+        if built["sha256"] != expected_artifact:
+            fail("E_PAYLOAD_CHANGED", "formal artifact differs from standalone-validated bytes")
         existing_lock = _lock(channel)
         existing_plugin = existing_lock.get("plugins", {}).get(preflight["plugin"], {})
         existing_record = existing_plugin.get("versions", {}).get(version)
@@ -600,6 +964,9 @@ def parser() -> argparse.ArgumentParser:
     artifact = sub.add_parser("artifact")
     artifact.add_argument("--repo", type=Path, required=True)
     artifact.add_argument("--output", type=Path, required=True)
+    independence = sub.add_parser("independence")
+    independence.add_argument("--repo", type=Path, required=True)
+    independence.add_argument("--json", action="store_true")
     for name in ("promote", "release"):
         command = sub.add_parser(name)
         command.add_argument("--repo", type=Path, required=True)
@@ -621,6 +988,8 @@ def main(argv=None) -> int:
             return 0 if result["formal_ready"] else 2
         if args.command == "artifact":
             result = build_artifact(args.repo, args.output)
+        elif args.command == "independence":
+            result = independence_preflight(args.repo)
         elif args.command == "promote":
             result = promote(args.repo, args.version, apply=args.apply, activate=args.apply)
         elif args.command == "release":

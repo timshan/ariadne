@@ -18,7 +18,7 @@ This is the normative runtime policy for current and future self-authored Codex 
 - Version: final strict `X.Y.Z` SemVer.
 - Identity: `formal/vX.Y.Z`, deterministic ZIP, SHA-256, source commit, and formal lock must agree.
 - Location: immutable version directory plus a generated non-default `skill-formal` marketplace; Codex installs into its managed cache.
-- Required gates: clean tree, only `develop` and `main`, duplicate/symlink-free discovery, configured checks, manifest/version match, and preserved rollback evidence.
+- Required gates: clean tree, only `develop` and `main`, duplicate/symlink-free discovery, zero detected cross-Skill dependencies, isolated standalone installation/checks, configured repository checks, manifest/version match, and preserved rollback evidence.
 
 ### Release
 
@@ -40,6 +40,9 @@ Each managed repository contains `lifecycle.json`:
   "plugin_path": "plugins/example",
   "package_paths": [".codex-plugin", "LICENSE", "lifecycle.py", "skills"],
   "discovery_roots": ["~/.codex/skills", "~/.agents/skills"],
+  "independence": {
+    "standalone_checks": [["python3", "skills/SKILL_NAME/scripts/self-test.py"]]
+  },
   "checks": [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
 }
 ```
@@ -48,13 +51,23 @@ Commands are argument arrays and never pass through a shell. Paths may be reposi
 
 `package_paths` is an allowlist relative to the Plugin root. Use it whenever ignored generated state, tests, recovery archives, or repository-only documentation share that root. Ariadne's default formal channel is `~/.local/share/ariadne/formal`; `ARIADNE_FORMAL_CHANNEL` may select another explicit location outside source and discovery paths.
 
+`independence.standalone_checks` is mandatory and non-empty. Commands are run without a shell from the exact Codex-installed payload under temporary empty user, Codex, and XDG directories. Executables are resolved to absolute paths first; child processes receive a minimal explicit environment, not arbitrary caller variables or the caller's complete `PATH`. Checks must exercise the Skill's core observable behavior and must not install or invoke another custom Skill.
+
+## Independent-Skill gate
+
+Before promotion, scan every allowlisted package text file. Reject dollar-prefixed external Skill calls, paths to an external Skill, and exact names found in configured discovery roots unless the identity belongs to a Skill packaged in the same Plugin. Report file, line, reference, and finding kind.
+
+Hash the exact allowlisted payload before repository checks. After checks, reject hash drift and re-run the dependency scan. Build the deterministic artifact, expose it through a temporary local marketplace, and require the extracted payload hash to match the scanned bytes. Install it into fresh `HOME` and `CODEX_HOME`; require exactly one enabled Plugin with the expected identity and version, verify its installed tree matches the artifact payload, and run every standalone check from that installed path. The formal build must reproduce the standalone artifact SHA-256. Any static finding, check mutation, install failure, extra enabled Plugin, byte mismatch, or failed check blocks promotion before persistent mutation.
+
+This gate proves explicit zero-custom-Skill dependency, exact standalone installation, and declared probes. It cannot prove the provenance of unattributed prose or logic that contains no machine-detectable Skill identifier.
+
 ## Formal gate
 
 Promotion must stop before mutation for any of these conditions:
 
 - dirty or detached source, current branch other than `develop`, third local branch, or non-fast-forward ancestry;
-- manifest name/version error, prerelease/build metadata, duplicate Skill name, symlink, path escape, or failed repository check;
-- source changed after preflight, existing formal version with different bytes/provenance, or conflicting tag;
+- manifest name/version error, prerelease/build metadata, duplicate Skill name, symlink, path escape, cross-Skill reference, malformed independence contract, standalone install/check failure, or failed repository check;
+- source changed after preflight, repository check changed packaged bytes, formal build differs from standalone-validated bytes, existing formal version with different bytes/provenance, or conflicting tag;
 - missing recovery evidence when a legacy or dirty runtime is being replaced.
 
 All file locks use atomic replacement. Artifacts use sorted paths, fixed timestamps, normalized modes, no symlinks, and safe extraction that rejects absolute and parent paths.

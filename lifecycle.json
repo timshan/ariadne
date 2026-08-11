@@ -10,6 +10,15 @@
     "~/.codex/skills",
     "~/.agents/skills"
   ],
+  "independence": {
+    "standalone_checks": [
+      [
+        "python3",
+        "skills/ariadne/scripts/ariadne.py",
+        "--help"
+      ]
+    ]
+  },
   "checks": [
     [
       "python3",

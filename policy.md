@@ -27,10 +27,14 @@ This policy is the authority for current and future self-authored Codex Skills. 
 ## Gates and rollback
 
 1. Inspect duplicate Skill names and symlinked payloads.
-2. Require a clean `develop` tree, only local `develop` and `main`, and a fast-forward path.
-3. Run configured repository checks and Plugin／Skill validators.
-4. Build the deterministic artifact and record commit, tags, checksum, and timestamps.
-5. For lifecycle, major, or security-boundary changes, obtain w5:p3 adversarial review before first formal use.
-6. Roll back by selecting a previous immutable formal version and reinstalling through the formal marketplace. Never use destructive Git reset or edit caches.
+2. Reject explicit cross-Skill calls, external Skill paths, and names found in configured discovery roots unless the Skill is packaged in the same Plugin.
+3. Hash the exact payload, run repository checks, reject any payload mutation, and re-scan unchanged bytes.
+4. Build the bound artifact, install it into temporary empty user and Codex directories with absolute executables and a minimal explicit process environment, require it to be the sole enabled Plugin, verify installed bytes, and run non-empty standalone checks from the installed payload.
+5. Require a clean `develop` tree, only local `develop` and `main`, and a fast-forward path.
+6. Build the deterministic formal artifact only if its SHA-256 matches standalone acceptance; record commit, tags, checksum, and timestamps.
+7. For lifecycle, major, or security-boundary changes, obtain w5:p3 adversarial review before first formal use.
+8. Roll back by selecting a previous immutable formal version and reinstalling through the formal marketplace. Never use destructive Git reset or edit caches.
+
+The cross-Skill and standalone gates detect explicit identifiers, installed identity, exact bytes, and declared behavior. They do not prove that unattributed prose or logic was never copied.
 
 Dirty legacy repositories and standalone runtimes are inventory inputs, not overwrite targets. Record path, name, tree hash, Git state, and recovery action before reconciliation; archive rather than delete until the Plugin formal version is proven.

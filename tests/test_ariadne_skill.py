@@ -23,7 +23,7 @@ class AriadneSkillTests(unittest.TestCase):
         )
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ariadne")
-        self.assertEqual(manifest["version"], "1.0.0")
+        self.assertEqual(manifest["version"], "1.1.0")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("name: ariadne", skill)
         self.assertIn("description:", skill)
@@ -95,6 +95,7 @@ class AriadneSkillTests(unittest.TestCase):
             )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("inspect", completed.stdout)
+        self.assertIn("independence", completed.stdout)
         self.assertIn("promote", completed.stdout)
         self.assertIn("release", completed.stdout)
         self.assertIn("rollback", completed.stdout)
@@ -107,6 +108,10 @@ class AriadneSkillTests(unittest.TestCase):
             [".codex-plugin", "LICENSE", "lifecycle.py", "skills"],
         )
         self.assertEqual(config["discovery_roots"], ["~/.codex/skills", "~/.agents/skills"])
+        self.assertEqual(
+            config["independence"]["standalone_checks"],
+            [["python3", "skills/ariadne/scripts/ariadne.py", "--help"]],
+        )
         self.assertIn(
             ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"],
             config["checks"],

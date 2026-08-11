@@ -1,4 +1,4 @@
 interface:
   display_name: "Ariadne"
-  short_description: "Prevent Skill lifecycle and version contamination"
-  default_prompt: "Use $ariadne to classify this Skill change and enforce development, formal, and release boundaries."
+  short_description: "Verify standalone Skills and lifecycle boundaries"
+  default_prompt: "Use $ariadne to reject cross-Skill dependencies and verify this Plugin installs and passes its core checks alone."

@@ -1,6 +1,6 @@
 # Ariadne
 
-A standalone Codex Skill that keeps Skill development, formal installation, and public releases from contaminating one another.
+A standalone Codex Skill that keeps Skill development, formal installation, and public releases from contaminating one another, rejects explicit dependencies on other custom Skills, and proves the exact Plugin can install and pass core checks alone.
 
 Ariadne gives a Skill repository three explicit states and refuses promotion when their identities drift. It uses only the Python standard library at runtime and does not depend on another custom Skill, review agent, CI service, or package manager.
 
@@ -17,6 +17,10 @@ Skill development can silently leak into active agent discovery paths, Plugin ca
 ## What it does
 
 - Audits duplicate Skill names, symlinks, branch state, package scope, and discovery paths.
+- Rejects packaged `$other-skill` calls, external Skill paths, and names discovered outside the target Plugin.
+- Installs the exact artifact in fresh temporary user/Codex directories, requires it to be the sole enabled Plugin, verifies installed bytes, and runs project-declared standalone checks.
+- Re-hashes and re-scans the allowlisted payload after repository checks, then binds standalone acceptance and formal promotion to the same deterministic artifact SHA-256.
+- Runs Codex and standalone probes with absolute executables and an explicit minimal environment instead of inheriting the caller's variables or complete `PATH`.
 - Packages only the declared Plugin allowlist, excluding tests, notes, generated channels, and repository history.
 - Produces deterministic ZIP archives with SHA-256 provenance.
 - Promotes `develop` to `main` only through a clean, fast-forward path.
@@ -56,6 +60,7 @@ Or run the bundled controller directly from a checkout:
 
 ```bash
 python3 lifecycle.py inspect --root PATH --json
+python3 lifecycle.py independence --repo PATH --json
 python3 lifecycle.py artifact --repo PATH --output PATH
 python3 lifecycle.py promote --repo PATH --version X.Y.Z
 python3 lifecycle.py promote --repo PATH --version X.Y.Z --apply
@@ -74,11 +79,20 @@ A managed repository provides a `lifecycle.json` file:
   "plugin_path": "plugins/example",
   "package_paths": [".codex-plugin", "LICENSE", "skills"],
   "discovery_roots": ["~/.codex/skills", "~/.agents/skills"],
+  "independence": {
+    "standalone_checks": [
+      ["python3", "skills/example/scripts/example.py", "--self-test"]
+    ]
+  },
   "checks": [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
 }
 ```
 
-`plugin_path` identifies the installable Plugin. `package_paths` is an allowlist relative to that Plugin root. Checks are argument arrays and never pass through a shell.
+`plugin_path` identifies the installable Plugin. `package_paths` is an allowlist relative to that Plugin root. Both check collections are argument arrays and never pass through a shell. `independence.standalone_checks` is mandatory: each command must exercise an observable core capability from the installed payload without another custom Skill.
+
+## Assurance boundary
+
+A passing independence gate means the allowlisted package has no detected explicit cross-Skill reference, repository checks did not change the scanned payload, the exact artifact installed as the only enabled Plugin in a minimal fresh process environment, and all declared standalone checks passed from the Codex-installed cache. Formal promotion must reproduce that artifact SHA-256. This does not prove that unattributed prose or logic was never copied when no Skill identifier remains, and it cannot compensate for a weak project-declared check.
 
 ## Repository layout
 
@@ -100,7 +114,8 @@ Only `plugins/ariadne/` is installable. Repository documentation, tests, and gen
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 lifecycle.py promote --repo . --version 1.0.0
+python3 lifecycle.py independence --repo . --json
+python3 lifecycle.py promote --repo . --version 1.1.0
 ```
 
 The design and expected behavior are documented in [docs/SDD.md](docs/SDD.md). Contribution rules, including AI contribution disclosure, are in [CONTRIBUTING.md](CONTRIBUTING.md).
