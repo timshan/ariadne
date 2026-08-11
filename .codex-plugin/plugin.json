@@ -6,6 +6,8 @@
     "name": "Tim Shan",
     "url": "https://github.com/timshan"
   },
+  "homepage": "https://github.com/timshan/ariadne",
+  "repository": "https://github.com/timshan/ariadne",
   "license": "MIT",
   "keywords": [
     "codex",

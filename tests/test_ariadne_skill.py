@@ -72,6 +72,10 @@ class AriadneSkillTests(unittest.TestCase):
     def test_self_lifecycle_configuration_runs_repository_tests(self):
         config = json.loads((ROOT / "lifecycle.json").read_text(encoding="utf-8"))
         self.assertEqual(config["plugin_path"], ".")
+        self.assertEqual(
+            config["package_paths"],
+            [".codex-plugin", "LICENSE", "lifecycle.py", "policy.md", "skills"],
+        )
         self.assertEqual(config["discovery_roots"], ["~/.codex/skills", "~/.agents/skills"])
         self.assertIn(
             ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"],

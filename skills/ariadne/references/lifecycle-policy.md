@@ -38,12 +38,15 @@ Each managed repository contains `lifecycle.json`:
 ```json
 {
   "plugin_path": ".",
+  "package_paths": [".codex-plugin", "LICENSE", "lifecycle.py", "skills"],
   "discovery_roots": ["~/.codex/skills", "~/.agents/skills"],
   "checks": [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
 }
 ```
 
 Commands are argument arrays and never pass through a shell. Paths may be repository-relative or explicit user discovery roots. Do not include secrets, authenticated URLs, or commands that install dependencies or mutate external state as checks.
+
+`package_paths` is an allowlist relative to the Plugin root. Use it whenever ignored generated state, tests, recovery archives, or repository-only documentation share that root. Ariadne's default formal channel is `~/.local/share/ariadne/formal`; `ARIADNE_FORMAL_CHANNEL` may select another explicit location outside source and discovery paths.
 
 ## Formal gate
 

@@ -75,7 +75,7 @@ Current:
 - Constraint: Use `rg` for active text and file searches; do not add another search implementation to user-facing runbooks.
 - Constraint: Do not store credentials, tokens, or authenticated repository URLs in locks, logs, artifacts, or errors.
 - Assumption: Plugin payload lives at a repository-relative path declared in `lifecycle.json`, normally the repository root for a Plugin or a specified Plugin subdirectory.
-- Assumption: A non-default local marketplace is explicitly configured once; formal installs use its managed cache rather than direct standalone copies.
+- Assumption: A non-default local marketplace rooted at `~/.local/share/ariadne/formal` is explicitly configured once; formal installs use its managed cache rather than direct standalone copies.
 - Unknown: GitHub universal Plugin directory submission policy may change; v1 release stops at Git tag, GitHub Release, checksum, and optional later submission.
 
 ## Options and decision
@@ -98,7 +98,7 @@ python3 lifecycle.py release --repo PATH --version X.Y.Z [--apply]
 python3 lifecycle.py rollback --plugin NAME --version X.Y.Z [--apply]
 ```
 
-Each managed repository provides `lifecycle.json` with `plugin_path`, `checks` as argument arrays, and optional discovery roots. The formal lock contains only non-secret provenance:
+Each managed repository provides `lifecycle.json` with `plugin_path`, optional `package_paths` allowlist, `checks` as argument arrays, and discovery roots. Generated formal state is outside source at `~/.local/share/ariadne/formal`. The formal lock contains only non-secret provenance:
 
 ```json
 {

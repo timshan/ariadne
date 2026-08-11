@@ -19,14 +19,14 @@ Keep three states physically and procedurally separate: mutable development sour
 - Keep exactly two permanent local branches: `develop` and `main`. Make runtime changes only on `develop`; do not create feature branches or worktrees as part of this workflow.
 - Keep development source outside Codex Skill discovery roots and Plugin cache. Test it through an isolated profile, explicit file path, or repository checks.
 - Add tests before implementation for changed gates. Preserve dirty trees and legacy runtimes as separate evidence; never reconcile by blind overwrite.
-- A repository managed by Ariadne must provide `lifecycle.json` with `plugin_path`, argument-array `checks`, and real standalone `discovery_roots`.
+- A repository managed by Ariadne must provide `lifecycle.json` with `plugin_path`, argument-array `checks`, and real standalone `discovery_roots`. When generated state or repository-only files live under the Plugin root, define explicit `package_paths` so they cannot enter inspection or artifacts.
 
 ## Formal boundary
 
 1. Run `python3 <ariadne-skill-directory>/scripts/ariadne.py inspect --root <discovery-root> --json`; any duplicate Skill name or symlink fails the formal gate.
 2. Set a final strict SemVer in `.codex-plugin/plugin.json`; prerelease or build metadata is not a formal version.
 3. Run `.../ariadne.py promote --repo <repo> --version X.Y.Z` and inspect the dry-run result.
-4. Use `--apply` only after a clean `develop`, passing checks, fast-forward ancestry, recovery evidence, and any required review. Promotion fast-forwards `main` to the validated commit, creates `formal/vX.Y.Z`, records a deterministic ZIP SHA-256 and lock, and installs through the non-default `skill-formal` marketplace.
+4. Use `--apply` only after a clean `develop`, passing checks, fast-forward ancestry, recovery evidence, and any required review. Promotion fast-forwards `main` to the validated commit, creates `formal/vX.Y.Z`, records a deterministic ZIP SHA-256 and lock under `~/.local/share/ariadne/formal`, and installs through the non-default `skill-formal` marketplace.
 5. Validate the extracted formal Plugin and Skill, then start a new Codex session to test discovery. Do not edit the installed cache.
 
 ## Release boundary

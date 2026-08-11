@@ -187,6 +187,28 @@ def load_repo(repo: Path) -> tuple[dict, Path, dict]:
     return config, plugin, manifest
 
 
+def package_roots(plugin: Path, config: dict) -> list[Path]:
+    configured = config.get("package_paths")
+    if configured is None:
+        return [plugin]
+    if not isinstance(configured, list) or not configured:
+        fail("E_PACKAGE_PATH", "package_paths must be a non-empty list")
+    roots = []
+    for raw in configured:
+        relative = Path(raw)
+        if relative.is_absolute() or ".." in relative.parts:
+            fail("E_PACKAGE_PATH", f"package path escapes Plugin root: {raw}")
+        resolved = (plugin / relative).resolve()
+        try:
+            resolved.relative_to(plugin)
+        except ValueError:
+            fail("E_PACKAGE_PATH", f"package path escapes Plugin root: {raw}")
+        if not resolved.exists():
+            fail("E_PACKAGE_PATH", f"package path does not exist: {resolved}")
+        roots.append(resolved)
+    return roots
+
+
 def set_manifest_version(repo: Path, version: str) -> None:
     require_final_semver(version)
     _, plugin, manifest = load_repo(repo)
@@ -194,20 +216,24 @@ def set_manifest_version(repo: Path, version: str) -> None:
     atomic_json(plugin / ".codex-plugin" / "plugin.json", manifest)
 
 
-def _payload_paths(plugin: Path):
-    for path in _walk(plugin):
-        if path.is_symlink():
-            fail("E_SYMLINK", f"Plugin payload contains symlink: {path}")
-        if path.is_file():
-            yield path
+def _payload_paths(plugin: Path, config: dict):
+    seen = set()
+    for root in package_roots(plugin, config):
+        candidates = [root] if root.is_file() or root.is_symlink() else _walk(root)
+        for path in candidates:
+            if path.is_symlink():
+                fail("E_SYMLINK", f"Plugin payload contains symlink: {path}")
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                yield path
 
 
 def build_artifact(repo: Path, output: Path) -> dict:
     repo = Path(repo).resolve()
     output = Path(output).resolve()
-    _, plugin, manifest = load_repo(repo)
+    config, plugin, manifest = load_repo(repo)
     require_final_semver(manifest.get("version", ""))
-    paths = sorted(_payload_paths(plugin), key=lambda path: path.relative_to(plugin).as_posix())
+    paths = sorted(_payload_paths(plugin, config), key=lambda path: path.relative_to(plugin).as_posix())
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, raw_temp = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
     os.close(fd)
@@ -268,7 +294,7 @@ def promotion_preflight(repo: Path, version: str) -> dict:
     ancestor = git_run(repo, "merge-base", "--is-ancestor", "main", "develop", check=False)
     if ancestor.returncode:
         fail("E_GIT_DIVERGED", "main is not an ancestor of develop")
-    audit_roots = [plugin]
+    audit_roots = package_roots(plugin, config)
     for raw in config.get("discovery_roots", []):
         candidate = Path(raw).expanduser()
         audit_roots.append(candidate.resolve() if candidate.is_absolute() else (repo / candidate).resolve())
@@ -382,9 +408,14 @@ def _activate(channel: Path, plugin: str, version: str) -> None:
     _external_run(["codex", "plugin", "add", f"{plugin}@skill-formal", "--json"], "E_CODEX_INSTALL")
 
 
+def default_channel() -> Path:
+    configured = os.environ.get("ARIADNE_FORMAL_CHANNEL") or os.environ.get("SKILL_LIFECYCLE_CHANNEL")
+    return Path(configured).expanduser() if configured else Path.home() / ".local" / "share" / "ariadne" / "formal"
+
+
 def promote(repo: Path, version: str, *, channel: Path | None = None, apply: bool = False, activate: bool = False) -> dict:
     repo = Path(repo).resolve()
-    channel = Path(channel or os.environ.get("SKILL_LIFECYCLE_CHANNEL", Path(__file__).parent / "channels" / "formal")).resolve()
+    channel = Path(channel or default_channel()).resolve()
     preflight = promotion_preflight(repo, version)
     if not apply:
         return {**preflight, "action": "dry-run", "channel": str(channel)}
@@ -499,7 +530,7 @@ def _verify_existing_release(repo: Path, tag: str, artifact: Path, expected_sha2
 
 def release(repo: Path, version: str, *, channel: Path | None = None, apply: bool = False) -> dict:
     repo = Path(repo).resolve()
-    channel = Path(channel or os.environ.get("SKILL_LIFECYCLE_CHANNEL", Path(__file__).parent / "channels" / "formal")).resolve()
+    channel = Path(channel or default_channel()).resolve()
     require_final_semver(version)
     _, _, manifest = load_repo(repo)
     plugin = manifest["name"]
@@ -540,7 +571,7 @@ def release(repo: Path, version: str, *, channel: Path | None = None, apply: boo
 
 def rollback(plugin: str, version: str, *, channel: Path | None = None, apply: bool = False, activate: bool = False) -> dict:
     require_final_semver(version)
-    channel = Path(channel or os.environ.get("SKILL_LIFECYCLE_CHANNEL", Path(__file__).parent / "channels" / "formal")).resolve()
+    channel = Path(channel or default_channel()).resolve()
     lock, record = _version_record(channel, plugin, version)
     payload = channel / "versions" / plugin / version / "payload"
     if not payload.is_dir():

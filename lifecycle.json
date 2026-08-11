@@ -1,5 +1,12 @@
 {
   "plugin_path": ".",
+  "package_paths": [
+    ".codex-plugin",
+    "LICENSE",
+    "lifecycle.py",
+    "policy.md",
+    "skills"
+  ],
   "discovery_roots": [
     "~/.codex/skills",
     "~/.agents/skills"
