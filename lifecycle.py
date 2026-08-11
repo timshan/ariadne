@@ -220,7 +220,9 @@ def build_artifact(repo: Path, output: Path) -> dict:
                 name = path.relative_to(plugin).as_posix()
                 info = zipfile.ZipInfo(name, FIXED_ZIP_TIME)
                 info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = (0o755 if os.access(path, os.X_OK) else 0o644) << 16
+                # The formal artifact is data consumed by Codex; normalize modes so
+                # the same commit hashes identically on native Linux and DrvFs.
+                info.external_attr = 0o644 << 16
                 archive.writestr(info, path.read_bytes(), compresslevel=9)
         os.replace(temp, output)
     finally:
@@ -268,7 +270,8 @@ def promotion_preflight(repo: Path, version: str) -> dict:
         fail("E_GIT_DIVERGED", "main is not an ancestor of develop")
     audit_roots = [plugin]
     for raw in config.get("discovery_roots", []):
-        audit_roots.append((repo / raw).resolve())
+        candidate = Path(raw).expanduser()
+        audit_roots.append(candidate.resolve() if candidate.is_absolute() else (repo / candidate).resolve())
     report = inspect_roots(audit_roots)
     if not report["formal_ready"]:
         fail("E_DISCOVERY", json.dumps({"duplicates": report["duplicates"], "symlinks": report["symlinks"]}))
@@ -316,17 +319,15 @@ def _replace_tree(source: Path, target: Path) -> None:
 def _marketplace(channel: Path, plugin: str, version: str) -> None:
     data = {
         "name": "skill-formal",
-        "owner": {"name": "Tim Shan"},
+        "interface": {"displayName": "Self-authored Skills Formal"},
         "plugins": [
             {
                 "name": plugin,
-                "source": f"./plugins/{plugin}",
-                "description": f"Locally promoted formal {plugin} plugin",
-                "version": version,
+                "source": {"source": "local", "path": f"./plugins/{plugin}"},
+                "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+                "category": "Developer Tools",
             }
         ],
-        "metadata": {"description": "Immutable formal channel for self-authored Codex plugins"},
-        "policies": {"trust": "private-local", "review": "lifecycle-gated"},
     }
     existing = channel / ".agents" / "plugins" / "marketplace.json"
     if existing.exists():
@@ -341,16 +342,44 @@ def _lock(channel: Path) -> dict:
     return read_json(path) if path.exists() else {"schema_version": 1, "plugins": {}}
 
 
-def _activate(channel: Path, plugin: str) -> None:
-    commands = (
-        ["codex", "plugin", "marketplace", "add", str(channel)],
-        ["codex", "plugin", "add", f"{plugin}@skill-formal"],
+def _external_json(command: list[str], code: str) -> dict:
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.returncode:
+        fail(code, result.stderr.strip() or result.stdout.strip() or repr(command))
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        fail(code, f"non-JSON output from {command[0]}: {exc}")
+
+
+def _external_run(command: list[str], code: str, *, cwd: Path | None = None) -> None:
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+    if result.returncode:
+        fail(code, result.stderr.strip() or result.stdout.strip() or repr(command))
+
+
+def _activate(channel: Path, plugin: str, version: str) -> None:
+    marketplaces = _external_json(
+        ["codex", "plugin", "marketplace", "list", "--json"], "E_CODEX_MARKETPLACE_LIST"
+    ).get("marketplaces", [])
+    selected = next((item for item in marketplaces if item.get("name") == "skill-formal"), None)
+    if selected:
+        if Path(selected.get("root", "")).resolve() != channel.resolve():
+            fail("E_CODEX_MARKETPLACE_CONFLICT", "skill-formal points to a different root")
+    else:
+        _external_run(
+            ["codex", "plugin", "marketplace", "add", str(channel)],
+            "E_CODEX_MARKETPLACE_ADD",
+        )
+    installed = _external_json(["codex", "plugin", "list", "--json"], "E_CODEX_PLUGIN_LIST").get(
+        "installed", []
     )
-    for command in commands:
-        result = subprocess.run(command, text=True, capture_output=True, check=False)
-        combined = f"{result.stdout}\n{result.stderr}"
-        if result.returncode and "already" not in combined.lower():
-            fail("E_CODEX_ACTIVATE", combined.strip() or repr(command))
+    current = next(
+        (item for item in installed if item.get("pluginId") == f"{plugin}@skill-formal"), None
+    )
+    if current and current.get("version") == version and current.get("enabled") is True:
+        return
+    _external_run(["codex", "plugin", "add", f"{plugin}@skill-formal", "--json"], "E_CODEX_INSTALL")
 
 
 def promote(repo: Path, version: str, *, channel: Path | None = None, apply: bool = False, activate: bool = False) -> dict:
@@ -362,6 +391,12 @@ def promote(repo: Path, version: str, *, channel: Path | None = None, apply: boo
     with tempfile.TemporaryDirectory(prefix="skill-lifecycle-") as raw:
         staged = Path(raw) / f"{preflight['plugin']}-{version}.zip"
         built = build_artifact(repo, staged)
+        if (
+            git_output(repo, "branch", "--show-current") != "develop"
+            or git_output(repo, "rev-parse", "develop") != preflight["commit"]
+            or git_output(repo, "status", "--porcelain")
+        ):
+            fail("E_GIT_CHANGED", "repository changed after formal preflight")
         existing_lock = _lock(channel)
         existing_plugin = existing_lock.get("plugins", {}).get(preflight["plugin"], {})
         existing_record = existing_plugin.get("versions", {}).get(version)
@@ -383,7 +418,7 @@ def promote(repo: Path, version: str, *, channel: Path | None = None, apply: boo
             return {**preflight, "action": "idempotent", "channel": str(channel), "sha256": built["sha256"]}
         git_run(repo, "switch", "main")
         try:
-            git_run(repo, "merge", "--ff-only", "develop")
+            git_run(repo, "merge", "--ff-only", preflight["commit"])
             current = git_output(repo, "rev-parse", "HEAD")
             if current != preflight["commit"]:
                 fail("E_GIT_COMMIT", "main did not reach the validated develop commit")
@@ -424,7 +459,7 @@ def promote(repo: Path, version: str, *, channel: Path | None = None, apply: boo
         finally:
             git_run(repo, "switch", "develop", check=False)
     if activate:
-        _activate(channel, preflight["plugin"])
+        _activate(channel, preflight["plugin"], version)
     return {**preflight, "action": "applied", "channel": str(channel), "sha256": built["sha256"]}
 
 
@@ -438,6 +473,28 @@ def _version_record(channel: Path, plugin: str, version: str) -> tuple[dict, dic
     if not artifact.is_file() or sha256_file(artifact) != record["sha256"]:
         fail("E_ARTIFACT_DRIFT", f"artifact does not match formal lock: {artifact}")
     return lock, record
+
+
+def _verify_existing_release(repo: Path, tag: str, artifact: Path, expected_sha256: str) -> bool:
+    viewed = subprocess.run(
+        ["gh", "release", "view", tag], cwd=repo, text=True, capture_output=True, check=False
+    )
+    if viewed.returncode:
+        return False
+    with tempfile.TemporaryDirectory(prefix="skill-release-verify-") as raw:
+        downloaded = Path(raw) / artifact.name
+        result = subprocess.run(
+            ["gh", "release", "download", tag, "--pattern", artifact.name, "--dir", raw],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode or not downloaded.is_file():
+            fail("E_RELEASE_VERIFY", result.stderr.strip() or "released artifact could not be downloaded")
+        if sha256_file(downloaded) != expected_sha256:
+            fail("E_RELEASE_DRIFT", f"GitHub Release asset differs from formal artifact: {artifact.name}")
+    return True
 
 
 def release(repo: Path, version: str, *, channel: Path | None = None, apply: bool = False) -> dict:
@@ -454,28 +511,27 @@ def release(repo: Path, version: str, *, channel: Path | None = None, apply: boo
     existing_tag = git_output(repo, "tag", "--list", release_tag)
     if existing_tag and git_output(repo, "rev-list", "-n", "1", release_tag) != record["commit"]:
         fail("E_TAG_CONFLICT", f"{release_tag} points to another commit")
-    if apply and record.get("released") and existing_tag:
-        return {"action": "idempotent", "plugin": plugin, "version": version, "sha256": record["sha256"]}
     if not apply:
         return {"action": "dry-run", "plugin": plugin, "version": version, "sha256": record["sha256"]}
+    artifact = Path(record["artifact"])
+    if _verify_existing_release(repo, release_tag, artifact, record["sha256"]):
+        if not existing_tag:
+            git_run(repo, "tag", release_tag, record["commit"])
+        record["released"] = True
+        record["released_at"] = record.get("released_at") or datetime.now(timezone.utc).isoformat()
+        atomic_json(channel / "formal-lock.json", lock)
+        return {"action": "idempotent", "plugin": plugin, "version": version, "sha256": record["sha256"]}
     if not existing_tag:
         git_run(repo, "tag", release_tag, record["commit"])
     git_run(repo, "push", "origin", record["formal_tag"], release_tag)
-    artifact = Path(record["artifact"])
     checksum = artifact.with_suffix(".sha256")
     if not checksum.exists():
         checksum.write_text(f"{record['sha256']}  {artifact.name}\n", encoding="utf-8")
-    viewed = subprocess.run(["gh", "release", "view", release_tag], cwd=repo, text=True, capture_output=True, check=False)
-    if viewed.returncode:
-        created = subprocess.run(
-            ["gh", "release", "create", release_tag, str(artifact), str(checksum), "--title", release_tag, "--notes", f"Formal {plugin} {version}; SHA-256 {record['sha256']}"],
-            cwd=repo,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if created.returncode:
-            fail("E_GITHUB_RELEASE", created.stderr.strip() or created.stdout.strip())
+    _external_run(
+        ["gh", "release", "create", release_tag, str(artifact), str(checksum), "--title", release_tag, "--notes", f"Formal {plugin} {version}; SHA-256 {record['sha256']}"],
+        "E_GITHUB_RELEASE",
+        cwd=repo,
+    )
     record["released"] = True
     record["released_at"] = datetime.now(timezone.utc).isoformat()
     atomic_json(channel / "formal-lock.json", lock)
@@ -500,7 +556,7 @@ def rollback(plugin: str, version: str, *, channel: Path | None = None, apply: b
     atomic_json(channel / "formal-lock.json", lock)
     _marketplace(channel, plugin, version)
     if activate:
-        _activate(channel, plugin)
+        _activate(channel, plugin, version)
     return {"action": "applied", "plugin": plugin, "version": version, "sha256": record["sha256"]}
 
 

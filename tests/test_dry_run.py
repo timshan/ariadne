@@ -25,6 +25,12 @@ class DryRunTests(unittest.TestCase):
             channel = root / "channel"
             lifecycle.promote(repo, "1.0.0", channel=channel, apply=True)
             before = (channel / "formal-lock.json").read_bytes()
+            marketplace = lifecycle.read_json(
+                channel / ".agents" / "plugins" / "marketplace.json"
+            )
+            entry = marketplace["plugins"][0]
+            self.assertEqual(entry["source"], {"source": "local", "path": "./plugins/sample-plugin"})
+            self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
             result = lifecycle.promote(repo, "1.0.0", channel=channel, apply=True)
             self.assertEqual(result["action"], "idempotent")
             self.assertEqual(before, (channel / "formal-lock.json").read_bytes())
