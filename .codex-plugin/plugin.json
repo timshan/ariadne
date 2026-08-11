@@ -1,0 +1,34 @@
+{
+  "name": "ariadne",
+  "version": "1.0.0",
+  "description": "Standalone lifecycle control for developing, promoting, releasing, and rolling back self-authored Codex Skills.",
+  "author": {
+    "name": "Tim Shan",
+    "url": "https://github.com/timshan"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "skills",
+    "lifecycle",
+    "release",
+    "semver"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Ariadne",
+    "shortDescription": "Keep Skill development, formal, and release versions separate",
+    "longDescription": "Audits Skill discovery, enforces develop/main boundaries, creates deterministic formal artifacts, and prevents release drift.",
+    "developerName": "Tim Shan",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use $ariadne to classify and control this Skill change.",
+      "Use $ariadne to run a formal promotion dry-run.",
+      "Use $ariadne to verify a Skill release or rollback."
+    ]
+  }
+}

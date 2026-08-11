@@ -1,5 +1,7 @@
 # Self-authored Skill lifecycle policy
 
+The packaged normative runtime copy is `skills/ariadne/references/lifecycle-policy.md`. This repository-level baseline remains concise and testable for maintainers; Ariadne itself carries everything required to operate without another Skill.
+
 This policy is the authority for current and future self-authored Codex Skills. All formal Skills are packaged as Plugins. The control project stays outside Codex discovery paths.
 
 ## Development boundary

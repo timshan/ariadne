@@ -15,7 +15,7 @@ recovery: Preserve hashes and Git refs before mutation; retain legacy runtime co
 
 ## Goal and non-goals
 
-Goal: provide one deterministic, auditable control plane that keeps mutable Skill development, locally executable formal versions, and externally published releases from being discovered or modified as if they were the same version.
+Goal: provide one deterministic, auditable, standalone Ariadne Skill and bundled control plane that keeps mutable Skill development, locally executable formal versions, and externally published releases from being discovered or modified as if they were the same version, even when no other custom Skill is installed.
 
 Non-goals:
 
@@ -40,6 +40,7 @@ Current:
 | OUT-003 | Release cannot drift from formal | Release command rejects any byte or provenance mismatch. |
 | OUT-004 | Existing runtime remains recoverable | Legacy inventory contains path, Skill name, hash, source state, and recovery action before migration. |
 | OUT-005 | Personal workflow stays light | Python standard library only; mutation requires `--apply`; no CI or service dependency. |
+| OUT-006 | Lifecycle control works as an independent Skill | An isolated Codex profile containing only the Ariadne Plugin discovers `$ariadne`, and its bundled launcher exposes all controller commands. |
 
 ## Requirements
 
@@ -53,6 +54,7 @@ Current:
 - REQ-008: Roll back by restoring a previous immutable formal package into the marketplace channel and reinstalling it, never by editing Plugin cache or destructive Git reset.
 - REQ-009: Preserve dirty repositories and legacy runtimes during inventory; no reconciliation or removal occurs without comparison, tests, and a recovery copy.
 - REQ-010: Keep the lifecycle authority outside Codex discovery paths and route agents to it through a short AGENTS rule plus a durable Wiki runbook.
+- REQ-011: Package the complete policy, launcher, and standard-library controller as the `ariadne` Plugin/Skill without any runtime dependency on another Skill, review agent, CI service, or package manager.
 
 ## Acceptance criteria
 
@@ -65,6 +67,7 @@ Current:
 - AC-007 (REQ-008): Given two formal versions, when rollback selects the older version, then the current marketplace payload and lock point to the older checksum while immutable version directories remain unchanged.
 - AC-008 (REQ-009): Given the current dirty Eureka repository and differing standalone runtime, when inventory runs, then both are recorded separately and neither is copied over the other.
 - AC-009 (REQ-010): Given a new agent session, when a self-authored Skill change is requested, then AGENTS routes it to the lifecycle policy without loading the control project as a Skill.
+- AC-010 (REQ-011): Given an isolated Codex profile with only Ariadne installed, when Plugin discovery and the bundled launcher are invoked, then `$ariadne` is available and `inspect`, `artifact`, `promote`, `release`, and `rollback` commands work without another Skill.
 
 ## Constraints, assumptions, and unknowns
 
@@ -130,6 +133,7 @@ flowchart LR
     Builder --> Versions[formal/versions\nimmutable payload + SHA-256]
     Versions --> Current[formal marketplace current copy]
     Current --> Cache[Codex managed plugin cache]
+    Cache --> Ariadne[Ariadne Skill + bundled launcher]
     Versions -->|same bytes only| Release[Git tag + GitHub Release]
 ~~~
 
@@ -200,6 +204,7 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pending execution |
 | REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pending execution |
 | REQ-010 | AC-009 | tests/test_policy_contract.py | policy.md and AGENTS route | Pending execution |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | .codex-plugin/plugin.json, skills/ariadne, lifecycle.py | 25-test staging suite and Plugin/Skill validators pass; isolated profile pending. |
 
 ## Staged rollout, monitoring, and rollback
 

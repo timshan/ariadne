@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ariadne"
+  short_description: "Prevent Skill lifecycle and version contamination"
+  default_prompt: "Use $ariadne to classify this Skill change and enforce development, formal, and release boundaries."
