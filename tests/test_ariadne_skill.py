@@ -97,6 +97,14 @@ class AriadneSkillTests(unittest.TestCase):
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
         self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
 
+    def test_installable_plugin_tree_contains_no_python_cache(self):
+        leaked = [
+            path.relative_to(PLUGIN).as_posix()
+            for path in PLUGIN.rglob("*")
+            if path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"}
+        ]
+        self.assertEqual(leaked, [])
+
 
 if __name__ == "__main__":
     unittest.main()
