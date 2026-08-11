@@ -8,13 +8,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "skills" / "ariadne"
+PLUGIN = ROOT / "plugins" / "ariadne"
+SKILL = PLUGIN / "skills" / "ariadne"
 
 
 class AriadneSkillTests(unittest.TestCase):
     def test_plugin_and_skill_identity_are_final_and_consistent(self):
         manifest = json.loads(
-            (ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+            (PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ariadne")
@@ -43,7 +44,7 @@ class AriadneSkillTests(unittest.TestCase):
                 self.assertNotIn(forbidden, skill.lower())
 
     def test_controller_uses_only_python_standard_library(self):
-        tree = ast.parse((ROOT / "lifecycle.py").read_text(encoding="utf-8"))
+        tree = ast.parse((PLUGIN / "lifecycle.py").read_text(encoding="utf-8"))
         imports = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -71,16 +72,30 @@ class AriadneSkillTests(unittest.TestCase):
 
     def test_self_lifecycle_configuration_runs_repository_tests(self):
         config = json.loads((ROOT / "lifecycle.json").read_text(encoding="utf-8"))
-        self.assertEqual(config["plugin_path"], ".")
+        self.assertEqual(config["plugin_path"], "plugins/ariadne")
         self.assertEqual(
             config["package_paths"],
-            [".codex-plugin", "LICENSE", "lifecycle.py", "policy.md", "skills"],
+            [".codex-plugin", "LICENSE", "lifecycle.py", "skills"],
         )
         self.assertEqual(config["discovery_roots"], ["~/.codex/skills", "~/.agents/skills"])
         self.assertIn(
             ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"],
             config["checks"],
         )
+
+    def test_repository_marketplace_points_only_to_installable_plugin(self):
+        marketplace = json.loads(
+            (ROOT / ".agents" / "plugins" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(marketplace["name"], "ariadne")
+        self.assertEqual(len(marketplace["plugins"]), 1)
+        entry = marketplace["plugins"][0]
+        self.assertEqual(entry["name"], "ariadne")
+        self.assertEqual(entry["source"], {"source": "local", "path": "./plugins/ariadne"})
+        self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
+        self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
 
 
 if __name__ == "__main__":

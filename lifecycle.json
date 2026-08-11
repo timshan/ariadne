@@ -1,10 +1,9 @@
 {
-  "plugin_path": ".",
+  "plugin_path": "plugins/ariadne",
   "package_paths": [
     ".codex-plugin",
     "LICENSE",
     "lifecycle.py",
-    "policy.md",
     "skills"
   ],
   "discovery_roots": [

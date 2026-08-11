@@ -2,12 +2,13 @@
 change_id: SKILL-LIFECYCLE-001
 title: Skill development, formal, and release lifecycle control
 risk_tier: high-risk
-status: design-ready
-owner: Codex
+status: verification-ready
+owner: Tim Shan
+contributors: Tim Shan; OpenAI Codex
 date: 2026-08-11
 tier_rationale: Changes Git branches, local Codex runtime packages, immutable artifacts, and external GitHub releases; a faulty transition can activate unreviewed instructions or lose rollback provenance.
-affected_paths: D:\project\skill-lifecycle-control, D:\project\daedalus, /home/timshan/.codex/AGENTS.md, Eureka workflow and Wiki
-review_owner: w5:p3 Claude Code for new lifecycle and high-risk migration boundaries
+affected_paths: D:\project\ariadne
+review_owner: w5:p3 Claude Code for the standalone lifecycle and publication boundary
 recovery: Preserve hashes and Git refs before mutation; retain legacy runtime copies outside discovery paths; reinstall the previous immutable formal artifact.
 ---
 
@@ -19,19 +20,19 @@ Goal: provide one deterministic, auditable, standalone Ariadne Skill and bundled
 
 Non-goals:
 
-- Do not replace Git, Codex Plugin validation, Skill Creator validation, Daedalus, or human authorization.
+- Do not replace Git, Codex Plugin validation, Skill validation, or human authorization.
 - Do not introduce CI, mandatory PRs, automatic dependency installation, telemetry, or automatic external publishing.
-- Do not overwrite the dirty Eureka source tree or current global standalone Skills during inventory.
+- Do not overwrite managed repositories or current standalone Skills during inventory.
 - Do not treat repository-only documentation changes as Plugin runtime releases.
 
 ## Current state and expected outcomes
 
 Current:
 
-- Daedalus has only `main`, no Plugin manifest, no tag or GitHub Release, and is not installed globally.
-- Eureka's D-drive Plugin source has uncommitted changes and differs byte-for-byte from the global standalone runtime Skills.
-- The Herdr adversarial review Skill exists as a global standalone runtime without a dedicated formal Plugin source repository.
-- Codex can discover duplicate Skill names without merging them, while no current lock records installed commit and artifact checksum.
+- The installable Plugin is physically isolated at `plugins/ariadne/`; tests and repository documents are outside its package root.
+- The Plugin contains its Skill, complete runtime policy, launcher, controller, manifest, and MIT license.
+- The repository marketplace points only to the installable Plugin directory.
+- The controller uses the Python standard library and records installed commit and artifact checksum in a formal lock.
 
 | Outcome ID | Observable expected result | Threshold or evidence |
 |---|---|---|
@@ -53,7 +54,7 @@ Current:
 - REQ-007: Publish only an existing formal artifact whose checksum and commit match the lock and `formal/vX.Y.Z` tag; create `vX.Y.Z` on the same commit.
 - REQ-008: Roll back by restoring a previous immutable formal package into the marketplace channel and reinstalling it, never by editing Plugin cache or destructive Git reset.
 - REQ-009: Preserve dirty repositories and legacy runtimes during inventory; no reconciliation or removal occurs without comparison, tests, and a recovery copy.
-- REQ-010: Keep the lifecycle authority outside Codex discovery paths and route agents to it through a short AGENTS rule plus a durable Wiki runbook.
+- REQ-010: Package all lifecycle authority inside Ariadne while keeping repository-only development material outside the installable Plugin.
 - REQ-011: Package the complete policy, launcher, and standard-library controller as the `ariadne` Plugin/Skill without any runtime dependency on another Skill, review agent, CI service, or package manager.
 
 ## Acceptance criteria
@@ -65,8 +66,8 @@ Current:
 - AC-005 (REQ-006): Given a valid promotion without `--apply`, when the command completes, then Git refs, channel files, lock, runtime, and external state remain unchanged.
 - AC-006 (REQ-005, REQ-007): Given a formal artifact modified after promotion, when release runs, then it stops before tag creation or GitHub mutation.
 - AC-007 (REQ-008): Given two formal versions, when rollback selects the older version, then the current marketplace payload and lock point to the older checksum while immutable version directories remain unchanged.
-- AC-008 (REQ-009): Given the current dirty Eureka repository and differing standalone runtime, when inventory runs, then both are recorded separately and neither is copied over the other.
-- AC-009 (REQ-010): Given a new agent session, when a self-authored Skill change is requested, then AGENTS routes it to the lifecycle policy without loading the control project as a Skill.
+- AC-008 (REQ-009): Given a dirty repository and a differing standalone runtime, when inventory runs, then both are recorded separately and neither is copied over the other.
+- AC-009 (REQ-010): Given only the packaged Ariadne Plugin, when Codex invokes `$ariadne`, then the complete policy and controller remain available without repository-only files or another Skill.
 - AC-010 (REQ-011): Given an isolated Codex profile with only Ariadne installed, when Plugin discovery and the bundled launcher are invoked, then `$ariadne` is available and `inspect`, `artifact`, `promote`, `release`, and `rollback` commands work without another Skill.
 
 ## Constraints, assumptions, and unknowns
@@ -103,7 +104,7 @@ Each managed repository provides `lifecycle.json` with `plugin_path`, optional `
 ```json
 {
   "plugins": {
-    "daedalus": {
+    "example": {
       "current_formal": "1.0.0",
       "versions": {
         "1.0.0": {
@@ -176,8 +177,8 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 ## Migration and reconciliation
 
 - Backup or restore point: record SHA-256 and Git status for all existing runtime and source trees; use a dated recovery archive outside discovery roots before disabling anything.
-- Rehearsal: use Daedalus, which has no installed runtime, to exercise Plugin conversion, formal promotion, local installation, release, and rollback checks.
-- Reconciliation: classify the global Eureka Skills as legacy formal and the dirty D-drive Plugin as development; compare behavior and tests before choosing a new Plugin formal version.
+- Rehearsal: use temporary Git repositories and an isolated Codex profile to exercise Plugin conversion, formal promotion, local installation, release, and rollback checks.
+- Reconciliation: classify an existing standalone runtime as legacy formal and its mutable repository as development; compare behavior and tests before choosing a new Plugin formal version.
 - Irreversible boundary: deletion of legacy copies and public release creation are separate explicit actions; initial migration disables or archives rather than deletes.
 
 ## Test portfolio and TDD slices
@@ -187,7 +188,7 @@ Outer acceptance or contract oracle: subprocess CLI tests over temporary Git rep
 1. RED: Add failing SemVer, duplicate, symlink, deterministic artifact, dry-run, drift, idempotency, rollback, and legacy-preservation tests before implementation.
 2. GREEN: Implement the smallest standard-library modules and CLI behavior to satisfy one vertical transition at a time.
 3. REFACTOR: Separate filesystem, Git, artifact, lock, and external command adapters while preserving subprocess-level contracts.
-4. CHECK: Run unit/CLI tests, Plugin and Skill validators, Daedalus ready/complete gates, isolated install tests, source integrity checks, and independent review.
+4. CHECK: Run unit/CLI tests, Plugin and Skill validators, isolated install tests, source integrity checks, and independent review.
 
 Special evidence: migration rehearsal, source/runtime hash comparison, tag/artifact checksum match, duplicate discovery audit, redacted error test, and w5:p3 report.
 
@@ -195,30 +196,30 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 
 | Requirement | Acceptance | Test | Implementation | Evidence |
 |---|---|---|---|---|
-| REQ-001 | AC-001 | tests/test_git_gates.py | lifecycle.py Git adapter | Pending execution |
-| REQ-002, REQ-004 | AC-002 | tests/test_versioning.py | lifecycle.py manifest/version checks | Pending execution |
-| REQ-003 | AC-003 | tests/test_inspect.py | lifecycle.py discovery audit | Pending execution |
-| REQ-005 | AC-004 | tests/test_artifact.py | lifecycle.py deterministic ZIP and lock | Pending execution |
-| REQ-006 | AC-005 | tests/test_dry_run.py | lifecycle.py apply boundary | Pending execution |
-| REQ-007 | AC-006 | tests/test_release.py | lifecycle.py release verifier | Pending execution |
-| REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pending execution |
-| REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pending execution |
-| REQ-010 | AC-009 | tests/test_policy_contract.py | policy.md and AGENTS route | Pending execution |
-| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | .codex-plugin/plugin.json, skills/ariadne, lifecycle.py | 25-test staging suite and Plugin/Skill validators pass; isolated profile pending. |
+| REQ-001 | AC-001 | tests/test_git_gates.py | lifecycle.py Git adapter | Pass |
+| REQ-002, REQ-004 | AC-002 | tests/test_versioning.py | lifecycle.py manifest/version checks | Pass |
+| REQ-003 | AC-003 | tests/test_inspect.py | lifecycle.py discovery audit | Pass |
+| REQ-005 | AC-004 | tests/test_artifact.py | lifecycle.py deterministic ZIP and lock | Pass |
+| REQ-006 | AC-005 | tests/test_dry_run.py | lifecycle.py apply boundary | Pass |
+| REQ-007 | AC-006 | tests/test_release.py | lifecycle.py release verifier | Pass |
+| REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pass |
+| REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pass |
+| REQ-010 | AC-009 | tests/test_policy_contract.py and tests/test_ariadne_skill.py | packaged policy and Plugin boundary | Pass |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 27-test suite and Plugin/Skill validators pass; final nested-layout isolated acceptance is pending. |
 
 ## Staged rollout, monitoring, and rollback
 
-- Stage and stop condition: controller unit tests → temporary-repository acceptance → Daedalus formal pilot → isolated Codex install → Daedalus release → Eureka/Herdr inventory and one-at-a-time migration. Stop on any checksum, duplicate, source-integrity, or review failure.
+- Stage and stop condition: controller unit tests → temporary-repository acceptance → isolated Codex install → adversarial review → formal promotion → public repository and release. Stop on any checksum, duplicate, source-integrity, or review failure.
 - Monitoring and threshold: every formal action records exact version/commit/hash; any mismatch is a hard failure. `codex plugin list` must show one intended formal version before standalone disablement.
 - Rollback trigger and command or procedure: trigger on activation failure, unexpected duplicate, behavior regression, checksum mismatch, or review rejection; restore previous channel payload and reinstall, leaving source refs unchanged.
 - Independent review or approval boundary: w5:p3 PASS is required before first formal use of the controller and for new/major/security-boundary migrations; user authorization is required for installation, push, tag, GitHub Release, and legacy removal.
 
 ## Verification evidence
 
-- RED evidence: Pending execution after tests are added.
-- GREEN evidence: Pending implementation.
-- Refactor or exception: Pending implementation review.
-- Fresh verification: Pending clean subprocess test run.
-- Realistic outcome check: Pending Daedalus isolated install/release pilot.
-- Security／performance／migration evidence: Pending symlink/path/redaction tests and migration rehearsal.
-- Remaining risks: GitHub universal directory submission remains outside v1; dirty Eureka reconciliation may require a separate feature-level review.
+- RED evidence: the repository-marketplace test failed before `plugins/ariadne/` and its marketplace existed.
+- GREEN evidence: 27 unit and subprocess tests pass after the package-boundary refactor.
+- Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
+- Fresh verification: Plugin and Skill validators pass on `plugins/ariadne/`.
+- Realistic outcome check: the prior root-layout build passed isolated installation; the final nested marketplace layout requires one fresh isolated install before promotion.
+- Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
+- Remaining risks: GitHub universal directory submission remains outside v1; public installation commands require verification after repository creation.

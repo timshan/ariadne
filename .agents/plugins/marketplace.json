@@ -1,0 +1,20 @@
+{
+  "name": "ariadne",
+  "interface": {
+    "displayName": "Ariadne"
+  },
+  "plugins": [
+    {
+      "name": "ariadne",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ariadne"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -37,7 +37,7 @@ Each managed repository contains `lifecycle.json`:
 
 ```json
 {
-  "plugin_path": ".",
+  "plugin_path": "plugins/example",
   "package_paths": [".codex-plugin", "LICENSE", "lifecycle.py", "skills"],
   "discovery_roots": ["~/.codex/skills", "~/.agents/skills"],
   "checks": [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
