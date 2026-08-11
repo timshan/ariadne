@@ -1,6 +1,6 @@
 ---
-change_id: SKILL-LIFECYCLE-003
-title: Skill lifecycle control with atomic remote-release synchronization
+change_id: SKILL-LIFECYCLE-004
+title: Skill lifecycle control with atomic release and stable publication evidence
 risk_tier: high-risk
 status: verified
 owner: Tim Shan
@@ -30,9 +30,9 @@ Non-goals:
 - Do not treat repository-only documentation changes as Plugin runtime releases.
 - Do not claim to detect unattributed semantic copying when packaged text contains no external Skill name, `$skill-name` call, path, or other machine-detectable reference.
 
-## Current state and expected outcomes
+## Stable system boundary and expected outcomes
 
-Current:
+Stable boundary:
 
 - The installable Plugin is physically isolated at `plugins/ariadne/`; tests and repository documents are outside its package root.
 - The Plugin contains its Skill, complete runtime policy, launcher, controller, manifest, and MIT license.
@@ -70,6 +70,7 @@ Current:
 - REQ-015: Hash the exact allowlisted payload before repository checks, reject any post-check drift, re-run the dependency scan, and require the later formal artifact SHA-256 to equal the standalone-validated artifact.
 - REQ-016: Spawn Codex and standalone checks with resolved absolute executables and an explicit minimal environment; do not inherit arbitrary caller variables or the caller's complete `PATH`.
 - REQ-017: Before creating or accepting a GitHub Release, synchronize local `main`, `formal/vX.Y.Z`, and `vX.Y.Z` to `origin` with explicit destination refspecs in one non-forced atomic push; any rejected ref must block publication without partially updating remote refs.
+- REQ-018: Keep SDD assertions stable across their own delivery lifecycle. Do not encode transient statements such as not yet committed, pushed, promoted, tagged, or released; route mutable publication status to the formal lock, GitHub Release metadata, or PDCA／Wiki records. Completed evidence may be cited only with immutable identifiers.
 
 ## Acceptance criteria
 
@@ -89,12 +90,14 @@ Current:
 - AC-014 (REQ-015): Given a repository check that modifies a packaged file, when promotion preflight runs, then it fails with `E_PAYLOAD_CHANGED` before standalone acceptance; a later formal build with different ignored payload bytes also fails.
 - AC-015 (REQ-016): Given ambient variables and a caller-only `PATH` directory, when standalone acceptance runs, then neither reaches Codex or the installed probe unless explicitly allowlisted as an isolated value or required executable directory.
 - AC-016 (REQ-017): Given a bare remote whose `main` lags the promoted formal commit, when release apply succeeds, then remote `main` and both exact tags resolve to the formal commit before GitHub Release creation; given a conflicting remote tag, the command fails, remote `main` and public tag remain unchanged, and `gh release create` is not called.
+- AC-017 (REQ-018): Given an SDD used before and after promotion or release, when publication state changes, then no SDD assertion becomes false merely because that planned lifecycle transition completed; mutable status is read from external evidence instead of requiring a post-release SDD rewrite.
 
 ## Constraints, assumptions, and unknowns
 
 - Constraint: Use Python 3 standard library and Git/Codex/GitHub CLIs already present; execute subprocesses without `shell=True`.
 - Constraint: Use `rg` for active text and file searches; do not add another search implementation to user-facing runbooks.
 - Constraint: Do not store credentials, tokens, or authenticated repository URLs in locks, logs, artifacts, or errors.
+- Constraint: Keep transient publication status out of the SDD. Use the formal lock, immutable Git refs, GitHub Release metadata, and PDCA／Wiki records as the current-state evidence surfaces.
 - Assumption: Plugin payload lives at a repository-relative path declared in `lifecycle.json`, normally the repository root for a Plugin or a specified Plugin subdirectory.
 - Assumption: A non-default local marketplace rooted at `~/.local/share/ariadne/formal` is explicitly configured once; formal installs use its managed cache rather than direct standalone copies.
 - Assumption: The configured Git remote supports atomic pushes; lack of support is a hard release failure rather than permission to fall back to partial ref updates.
@@ -224,6 +227,7 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 | Repository check mutates package | Exact payload hash changes after checks | Fail before standalone installation; unchanged bytes are re-scanned before acceptance. |
 | Ambient process contamination | Unlisted variable or caller-only `PATH` directory reaches the child | Replace inherited environment with isolated homes, fixed locale/temp, platform-required keys, and resolved executable directories. |
 | Partial remote release refs | Any remote ref is rejected or atomic push unsupported | Fail before `gh release create`; do not force or retry with a non-atomic push. |
+| Self-expiring SDD status | A statement becomes false solely because its planned commit, promotion, tag, or release completes | Remove the relative status; preserve stable design assertions and route mutable state to external evidence. |
 
 ## Migration and reconciliation
 
@@ -263,6 +267,7 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-015 | AC-014 | tests/test_git_gates.py | lifecycle.py exact payload hash, post-check re-scan, and formal artifact binding | Pass |
 | REQ-016 | AC-015 | tests/test_independence.py | lifecycle.py absolute executable resolver and minimal subprocess environment | Pass |
 | REQ-017 | AC-016 | tests/test_release.py | lifecycle.py explicit-refspec atomic release push | Pass |
+| REQ-018 | AC-017 | bounded `rg` audit and `git diff --check` | docs/SDD.md stable publication-evidence boundary | Pass |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -281,4 +286,4 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 - Fresh verification: Plugin and Skill validators pass on v1.1.1 `plugins/ariadne/`; `git diff --check` passes.
 - Realistic outcome check: `independence --repo . --json` found zero references against 11 external discovered Skill identities, installed only `ariadne@ariadne-standalone` 1.1.1 into a fresh profile, verified exact installed bytes under isolated `CODEX_HOME`, and passed the bundled launcher check.
 - Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
-- Remaining risks: static scanning cannot prove unattributed semantic provenance, a weak project-declared standalone check can under-test behavior, and a remote without atomic-push support blocks release by design. The w5:p3 review returned `PASS`; its sole low-severity R-01 test gap was closed with a dedicated `E_RELEASE_MAIN` regression. Ariadne v1.1.0 remains immutable and public; this fix is committed and pushed as v1.1.1 development content on `develop`, with no promotion, tag, or Release in this work unit.
+- Remaining risks: static scanning cannot prove unattributed semantic provenance, a weak project-declared standalone check can under-test behavior, and a remote without atomic-push support blocks release by design. The w5:p3 review returned `PASS`; its sole low-severity R-01 test gap was closed with a dedicated `E_RELEASE_MAIN` regression. Current publication state is intentionally external to this SDD and must be read from the formal lock, immutable Git refs, GitHub Release metadata, or the linked PDCA／Wiki evidence.
