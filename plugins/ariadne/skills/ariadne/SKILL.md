@@ -43,6 +43,7 @@ Keep three states physically and procedurally separate: mutable development sour
 
 - Release only the existing formal artifact. Run `.../ariadne.py release --repo <repo> --version X.Y.Z` first; `--apply` is a separate authorized external write.
 - `vX.Y.Z` and `formal/vX.Y.Z` must point to the same commit. A GitHub Release must contain the exact locked ZIP and checksum; a pre-existing release asset is downloaded and hashed before it is accepted.
+- The apply path must atomically synchronize local `main` and both exact tags to `origin` before creating the GitHub Release. Do not force a ref or continue after an atomic push failure.
 - Push or publish only after checking remote state to prevent duplicate external writes.
 
 ## Rollback and stopping rules

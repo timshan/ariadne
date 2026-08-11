@@ -892,6 +892,20 @@ def _verify_existing_release(repo: Path, tag: str, artifact: Path, expected_sha2
     return True
 
 
+def _push_release_refs(repo: Path, formal_tag: str, release_tag: str, formal_commit: str) -> None:
+    if git_run(repo, "merge-base", "--is-ancestor", formal_commit, "main", check=False).returncode:
+        fail("E_RELEASE_MAIN", f"main does not contain formal commit {formal_commit}")
+    git_run(
+        repo,
+        "push",
+        "--atomic",
+        "origin",
+        "main:refs/heads/main",
+        f"{formal_tag}:refs/tags/{formal_tag}",
+        f"{release_tag}:refs/tags/{release_tag}",
+    )
+
+
 def release(repo: Path, version: str, *, channel: Path | None = None, apply: bool = False) -> dict:
     repo = Path(repo).resolve()
     channel = Path(channel or default_channel()).resolve()
@@ -912,13 +926,14 @@ def release(repo: Path, version: str, *, channel: Path | None = None, apply: boo
     if _verify_existing_release(repo, release_tag, artifact, record["sha256"]):
         if not existing_tag:
             git_run(repo, "tag", release_tag, record["commit"])
+        _push_release_refs(repo, record["formal_tag"], release_tag, record["commit"])
         record["released"] = True
         record["released_at"] = record.get("released_at") or datetime.now(timezone.utc).isoformat()
         atomic_json(channel / "formal-lock.json", lock)
         return {"action": "idempotent", "plugin": plugin, "version": version, "sha256": record["sha256"]}
     if not existing_tag:
         git_run(repo, "tag", release_tag, record["commit"])
-    git_run(repo, "push", "origin", record["formal_tag"], release_tag)
+    _push_release_refs(repo, record["formal_tag"], release_tag, record["commit"])
     checksum = artifact.with_suffix(".sha256")
     if not checksum.exists():
         checksum.write_text(f"{record['sha256']}  {artifact.name}\n", encoding="utf-8")

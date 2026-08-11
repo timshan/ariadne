@@ -20,7 +20,7 @@ This policy is the authority for current and future self-authored Codex Skills. 
 
 ## Release boundary
 
-- A release publishes the exact existing formal artifact. It creates `vX.Y.Z` on the same commit as `formal/vX.Y.Z`, pushes both tags, and attaches the ZIP plus checksum to a GitHub Release.
+- A release publishes the exact existing formal artifact. It creates `vX.Y.Z` on the same commit as `formal/vX.Y.Z`, then atomically pushes local `main` and both exact tags before attaching the ZIP plus checksum to a GitHub Release. A rejected ref leaves all three remote refs unchanged and blocks GitHub Release creation.
 - Release is an external write and requires explicit user authorization. A changed artifact, tag conflict, or missing lock stops publication.
 - Universal directory submission, if ever requested, is a later and separate action.
 

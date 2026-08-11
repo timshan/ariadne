@@ -115,7 +115,7 @@ Only `plugins/ariadne/` is installable. Repository documentation, tests, and gen
 ```bash
 python3 -m unittest discover -s tests -v
 python3 lifecycle.py independence --repo . --json
-python3 lifecycle.py promote --repo . --version 1.1.0
+python3 lifecycle.py promote --repo . --version 1.1.1
 ```
 
 The design and expected behavior are documented in [docs/SDD.md](docs/SDD.md). Contribution rules, including AI contribution disclosure, are in [CONTRIBUTING.md](CONTRIBUTING.md).
