@@ -59,6 +59,10 @@ Promotion must stop before mutation for any of these conditions:
 
 All file locks use atomic replacement. Artifacts use sorted paths, fixed timestamps, normalized modes, no symlinks, and safe extraction that rejects absolute and parent paths.
 
+## Mutation authorization gate
+
+Dry-run is always allowed. Before an Agent constructs or runs any `--apply` command, the current conversation must contain explicit user authorization for the exact operation, repository or Plugin, version, and external target when one exists. Standing policy, inferred intent, or broad prior approval is insufficient. Without that authorization, the Agent stops after reporting the dry-run plan and asks one concise confirmation question.
+
 ## Activation, release, and rollback
 
 - Activation checks configured marketplaces and installed Plugins using structured Codex JSON. A same-name marketplace pointing elsewhere is a conflict.

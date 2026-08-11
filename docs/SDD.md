@@ -50,7 +50,7 @@ Current:
 - REQ-003: Discover duplicate Skill names and symlinked Skill or Plugin payloads across configured roots and fail the formal gate.
 - REQ-004: Validate strict SemVer and distinguish development prereleases from final formal versions.
 - REQ-005: Build deterministic, sorted, symlink-free ZIP artifacts and record SHA-256, source commit, Plugin name, version, formal tag, and timestamp in a lock.
-- REQ-006: Default `promote`, `release`, and `rollback` to dry-run; require explicit `--apply` and verify idempotency before mutation.
+- REQ-006: Default `promote`, `release`, and `rollback` to dry-run; require explicit current-conversation authorization before an Agent constructs `--apply`, and verify idempotency before mutation.
 - REQ-007: Publish only an existing formal artifact whose checksum and commit match the lock and `formal/vX.Y.Z` tag; create `vX.Y.Z` on the same commit.
 - REQ-008: Roll back by restoring a previous immutable formal package into the marketplace channel and reinstalling it, never by editing Plugin cache or destructive Git reset.
 - REQ-009: Preserve dirty repositories and legacy runtimes during inventory; no reconciliation or removal occurs without comparison, tests, and a recovery copy.
@@ -63,7 +63,7 @@ Current:
 - AC-002 (REQ-002, REQ-004): Given a runtime payload change without a final strict SemVer, when promotion runs, then it fails; a repository-only documentation change does not force a Plugin release.
 - AC-003 (REQ-003): Given two discovered `SKILL.md` files with the same frontmatter name or any symlinked payload, when inspect runs, then it identifies every path and fails the formal gate.
 - AC-004 (REQ-005): Given the same clean Plugin tree and commit, when two artifacts are built, then their bytes and SHA-256 are identical.
-- AC-005 (REQ-006): Given a valid promotion without `--apply`, when the command completes, then Git refs, channel files, lock, runtime, and external state remain unchanged.
+- AC-005 (REQ-006): Given a valid promotion without `--apply`, or without explicit current-conversation authorization for the exact mutation, when the workflow reaches its mutation boundary, then Git refs, channel files, lock, runtime, and external state remain unchanged.
 - AC-006 (REQ-005, REQ-007): Given a formal artifact modified after promotion, when release runs, then it stops before tag creation or GitHub mutation.
 - AC-007 (REQ-008): Given two formal versions, when rollback selects the older version, then the current marketplace payload and lock point to the older checksum while immutable version directories remain unchanged.
 - AC-008 (REQ-009): Given a dirty repository and a differing standalone runtime, when inventory runs, then both are recorded separately and neither is copied over the other.
@@ -200,12 +200,12 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-002, REQ-004 | AC-002 | tests/test_versioning.py | lifecycle.py manifest/version checks | Pass |
 | REQ-003 | AC-003 | tests/test_inspect.py | lifecycle.py discovery audit | Pass |
 | REQ-005 | AC-004 | tests/test_artifact.py | lifecycle.py deterministic ZIP and lock | Pass |
-| REQ-006 | AC-005 | tests/test_dry_run.py | lifecycle.py apply boundary | Pass |
+| REQ-006 | AC-005 | tests/test_dry_run.py and tests/test_ariadne_skill.py | controller dry-run and Skill authorization contract | Pass |
 | REQ-007 | AC-006 | tests/test_release.py | lifecycle.py release verifier | Pass |
 | REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pass |
 | REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pass |
 | REQ-010 | AC-009 | tests/test_policy_contract.py and tests/test_ariadne_skill.py | packaged policy and Plugin boundary | Pass |
-| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 28-test suite, Plugin/Skill validators, and isolated nested-layout install pass. |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 30-test suite, Plugin/Skill validators, and isolated nested-layout install pass. |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -217,7 +217,7 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 ## Verification evidence
 
 - RED evidence: the repository-marketplace test failed before `plugins/ariadne/` and its marketplace existed.
-- GREEN evidence: 28 unit and subprocess tests pass after the package-boundary and cache-leak refactors.
+- GREEN evidence: 30 unit and subprocess tests pass after the package-boundary, cache-leak, mutation-authorization, and formal-channel boundary refactors.
 - Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
 - Fresh verification: Plugin and Skill validators pass on `plugins/ariadne/`.
 - Realistic outcome check: an isolated Codex profile installed only `ariadne@ariadne` from the nested marketplace; the installed launcher exposed all controller commands and contained no source Python cache.

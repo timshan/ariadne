@@ -1,10 +1,14 @@
 import ast
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import lifecycle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +46,17 @@ class AriadneSkillTests(unittest.TestCase):
         for forbidden in ("$eureka", "$daedalus", "$herdr", "$skill-creator"):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, skill.lower())
+
+    def test_skill_requires_explicit_current_conversation_apply_authorization(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "explicit user authorization",
+            "current conversation",
+            "exact operation",
+            "never construct or run `--apply`",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, skill)
 
     def test_controller_uses_only_python_standard_library(self):
         tree = ast.parse((PLUGIN / "lifecycle.py").read_text(encoding="utf-8"))
@@ -104,6 +119,26 @@ class AriadneSkillTests(unittest.TestCase):
             if path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"}
         ]
         self.assertEqual(leaked, [])
+
+    def test_default_formal_channel_is_outside_source_and_discovery_roots(self):
+        config = json.loads((ROOT / "lifecycle.json").read_text(encoding="utf-8"))
+        with mock.patch.dict(
+            os.environ,
+            {"ARIADNE_FORMAL_CHANNEL": "", "SKILL_LIFECYCLE_CHANNEL": ""},
+        ):
+            channel = lifecycle.default_channel().resolve()
+        boundaries = [
+            (ROOT / config["plugin_path"]).resolve(),
+            *(Path(raw).expanduser().resolve() for raw in config["discovery_roots"]),
+        ]
+        for boundary in boundaries:
+            with self.subTest(boundary=boundary):
+                overlap = (
+                    channel == boundary
+                    or channel in boundary.parents
+                    or boundary in channel.parents
+                )
+                self.assertFalse(overlap)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,12 @@ Keep three states physically and procedurally separate: mutable development sour
 3. Read [the complete lifecycle policy](references/lifecycle-policy.md) before changing branches, versions, discovery paths, formal packages, or release state.
 4. Run the controller from any working directory with `python3 <ariadne-skill-directory>/scripts/ariadne.py ...`. Mutation commands are dry-run unless `--apply` is explicit.
 
+## Mutation authorization
+
+- Never construct or run `--apply` from inferred intent, standing policy, or a broad earlier approval.
+- Require explicit user authorization in the current conversation for the exact operation, repository or Plugin, version, and external target when one exists.
+- If that authorization is absent, complete only the dry-run, report the proposed mutation, and ask one concise confirmation question.
+
 ## Development boundary
 
 - Keep exactly two permanent local branches: `develop` and `main`. Make runtime changes only on `develop`; do not create feature branches or worktrees as part of this workflow.
@@ -26,7 +32,7 @@ Keep three states physically and procedurally separate: mutable development sour
 1. Run `python3 <ariadne-skill-directory>/scripts/ariadne.py inspect --root <discovery-root> --json`; any duplicate Skill name or symlink fails the formal gate.
 2. Set a final strict SemVer in `.codex-plugin/plugin.json`; prerelease or build metadata is not a formal version.
 3. Run `.../ariadne.py promote --repo <repo> --version X.Y.Z` and inspect the dry-run result.
-4. Use `--apply` only after a clean `develop`, passing checks, fast-forward ancestry, recovery evidence, and any required review. Promotion fast-forwards `main` to the validated commit, creates `formal/vX.Y.Z`, records a deterministic ZIP SHA-256 and lock under `~/.local/share/ariadne/formal`, and installs through the non-default `skill-formal` marketplace.
+4. Use `--apply` only after the mutation authorization rule, a clean `develop`, passing checks, fast-forward ancestry, recovery evidence, and any required review. Promotion fast-forwards `main` to the validated commit, creates `formal/vX.Y.Z`, records a deterministic ZIP SHA-256 and lock under `~/.local/share/ariadne/formal`, and installs through the non-default `skill-formal` marketplace.
 5. Validate the extracted formal Plugin and Skill, then start a new Codex session to test discovery. Do not edit the installed cache.
 
 ## Release boundary

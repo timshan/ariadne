@@ -2,7 +2,7 @@
 
 The packaged normative runtime copy is `plugins/ariadne/skills/ariadne/references/lifecycle-policy.md`. This repository-level baseline remains concise and testable for maintainers; Ariadne itself carries everything required to operate without another Skill.
 
-This policy is the authority for current and future self-authored Codex Skills. All formal Skills are packaged as Plugins. The control project stays outside Codex discovery paths.
+This policy is the authority for current and future self-authored Codex Skills. All formal Skills are packaged as Plugins. Ariadne packages its control plane inside its own installable Plugin, while mutable development and generated formal state stay outside active Skill discovery paths.
 
 ## Development boundary
 
@@ -16,7 +16,7 @@ This policy is the authority for current and future self-authored Codex Skills. 
 - `main` contains only validated formal source. Promotion is fast-forward-only from `develop`.
 - A formal version uses final strict SemVer, an immutable `formal/vX.Y.Z` tag, a deterministic ZIP, a SHA-256 checksum, and a provenance lock.
 - Local execution uses the non-default `skill-formal` marketplace and Codex-managed Plugin cache. Do not edit Plugin caches or copy development Skills into global discovery roots.
-- Promotion and rollback are dry-run unless `--apply` is supplied. Existing immutable versions may be reused only when bytes and provenance match.
+- Promotion and rollback are dry-run unless `--apply` is supplied. An Agent may construct or run `--apply` only after explicit user authorization in the current conversation for the exact operation, target, and version. Existing immutable versions may be reused only when bytes and provenance match.
 
 ## Release boundary
 
