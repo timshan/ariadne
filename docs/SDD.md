@@ -22,6 +22,8 @@ First functional extension goal: require every promoted managed Skill to contain
 
 Second functional extension goal: make release publication synchronize local `main`, `formal/vX.Y.Z`, and `vX.Y.Z` to the remote as one atomic transaction before a GitHub Release can be created.
 
+Third functional extension goal: make an idempotent repeated promotion reconcile a requested Codex activation after a prior post-promotion activation failure without rewriting immutable formal state.
+
 Non-goals:
 
 - Do not replace Git, Codex Plugin validation, Skill validation, or human authorization.
@@ -50,6 +52,7 @@ Stable boundary:
 | OUT-007 | Managed payloads do not call another custom Skill | Static independence report contains zero external Skill references before promotion. |
 | OUT-008 | Managed payloads install and execute their declared core probe alone | Exact artifact installs as the sole enabled Plugin in fresh `HOME`／`CODEX_HOME`; every `independence.standalone_checks` command exits zero from the installed payload. |
 | OUT-009 | A published release cannot leave remote `main` behind its tags | Remote `main`, `formal/vX.Y.Z`, and `vX.Y.Z` are updated in one atomic push before `gh release create`; rejection leaves all three refs unchanged. |
+| OUT-010 | A completed formal promotion can recover a failed activation | Repeating the exact promotion with activation requested invokes installed-state reconciliation while lock bytes, artifact bytes, `main`, and the formal tag remain unchanged. |
 
 ## Requirements
 
@@ -71,6 +74,7 @@ Stable boundary:
 - REQ-016: Spawn Codex and standalone checks with resolved absolute executables and an explicit minimal environment; do not inherit arbitrary caller variables or the caller's complete `PATH`.
 - REQ-017: Before creating or accepting a GitHub Release, synchronize local `main`, `formal/vX.Y.Z`, and `vX.Y.Z` to `origin` with explicit destination refspecs in one non-forced atomic push; any rejected ref must block publication without partially updating remote refs.
 - REQ-018: Keep SDD assertions stable across their own delivery lifecycle. Do not encode transient statements such as not yet committed, pushed, promoted, tagged, or released; route mutable publication status to the formal lock, GitHub Release metadata, or PDCA／Wiki records. Completed evidence may be cited only with immutable identifiers.
+- REQ-019: When an applied promotion is already formally converged and activation is requested, run the existing idempotent activation reconciliation before returning success; never rebuild or rewrite the matching artifact, lock, marketplace payload, branch, or formal tag.
 
 ## Acceptance criteria
 
@@ -91,6 +95,7 @@ Stable boundary:
 - AC-015 (REQ-016): Given ambient variables and a caller-only `PATH` directory, when standalone acceptance runs, then neither reaches Codex or the installed probe unless explicitly allowlisted as an isolated value or required executable directory.
 - AC-016 (REQ-017): Given a bare remote whose `main` lags the promoted formal commit, when release apply succeeds, then remote `main` and both exact tags resolve to the formal commit before GitHub Release creation; given a conflicting remote tag, the command fails, remote `main` and public tag remain unchanged, and `gh release create` is not called.
 - AC-017 (REQ-018): Given an SDD used before and after promotion or release, when publication state changes, then no SDD assertion becomes false merely because that planned lifecycle transition completed; mutable status is read from external evidence instead of requiring a post-release SDD rewrite.
+- AC-018 (REQ-019): Given a promotion whose artifact, lock, current formal payload, `main`, and formal tag already match after a prior activation failure, when the same promotion is repeated with activation requested, then activation is retried exactly once and the immutable formal evidence remains byte-for-byte and ref-for-ref unchanged; without activation requested, no activation command runs.
 
 ## Constraints, assumptions, and unknowns
 
@@ -181,7 +186,7 @@ flowchart LR
 ~~~
 
 decision_question: Which transitions are legal, and where must a failed or repeated operation stop?
-traces: REQ-001, REQ-006, REQ-008, REQ-014, REQ-015, REQ-016, REQ-017, AC-001, AC-005, AC-007, AC-013, AC-014, AC-015, AC-016
+traces: REQ-001, REQ-006, REQ-008, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, AC-001, AC-005, AC-007, AC-013, AC-014, AC-015, AC-016, AC-018
 
 ~~~mermaid
 stateDiagram-v2
@@ -195,7 +200,10 @@ stateDiagram-v2
     IsolatedInstall --> Formal: exact Plugin is sole enabled install
     Formal --> Released: atomic remote refs + exact artifact + explicit --apply
     Formal --> Formal: atomic push rejected / no GitHub Release
-    Formal --> Formal: idempotent repeat
+    Formal --> Formal: idempotent repeat without activation
+    Formal --> ActivationReconcile: idempotent repeat + activation requested
+    ActivationReconcile --> Formal: already active or install succeeds
+    ActivationReconcile --> Formal: activation fails / immutable formal state retained
     Released --> Released: idempotent repeat
     Formal --> PreviousFormal: rollback --apply
     Released --> PreviousFormal: rollback --apply
@@ -228,6 +236,7 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 | Ambient process contamination | Unlisted variable or caller-only `PATH` directory reaches the child | Replace inherited environment with isolated homes, fixed locale/temp, platform-required keys, and resolved executable directories. |
 | Partial remote release refs | Any remote ref is rejected or atomic push unsupported | Fail before `gh release create`; do not force or retry with a non-atomic push. |
 | Self-expiring SDD status | A statement becomes false solely because its planned commit, promotion, tag, or release completes | Remove the relative status; preserve stable design assertions and route mutable state to external evidence. |
+| Post-promotion activation failure | Formal evidence matches but Codex Plugin is absent, disabled, or stale | Preserve artifact, lock, payload and refs; a repeated promotion with activation requested re-runs only idempotent activation reconciliation. |
 
 ## Migration and reconciliation
 
@@ -240,7 +249,7 @@ no_diagram_rationale: Not applicable; component ownership and lifecycle transiti
 
 Outer acceptance or contract oracle: subprocess CLI tests over temporary Git repositories, Plugin trees, discovery roots, marketplace channels, and fake `gh`/`codex` executables.
 
-1. RED: Add failing SemVer, duplicate, symlink, deterministic artifact, dry-run, drift, idempotency, rollback, legacy-preservation, cross-Skill reference, malformed independence contract, isolated install identity, standalone-check, mutating-check, artifact-binding, ambient-environment, stale remote-main, and atomic-ref rejection tests before implementation.
+1. RED: Add failing SemVer, duplicate, symlink, deterministic artifact, dry-run, drift, idempotency, activation-recovery, rollback, legacy-preservation, cross-Skill reference, malformed independence contract, isolated install identity, standalone-check, mutating-check, artifact-binding, ambient-environment, stale remote-main, and atomic-ref rejection tests before implementation.
 2. GREEN: Implement the smallest standard-library modules and CLI behavior to satisfy one vertical transition at a time.
 3. REFACTOR: Separate filesystem, Git, artifact, lock, and external command adapters while preserving subprocess-level contracts.
 4. CHECK: Run unit/CLI tests, Plugin and Skill validators, isolated install tests, source integrity checks, and independent review.
@@ -268,6 +277,7 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-016 | AC-015 | tests/test_independence.py | lifecycle.py absolute executable resolver and minimal subprocess environment | Pass |
 | REQ-017 | AC-016 | tests/test_release.py | lifecycle.py explicit-refspec atomic release push | Pass |
 | REQ-018 | AC-017 | bounded `rg` audit and `git diff --check` | docs/SDD.md stable publication-evidence boundary | Pass |
+| REQ-019 | AC-018 | tests/test_activation.py | lifecycle.py converged-formal activation reconciliation | Pass; RED observed `_activate` call count 0 before implementation, GREEN call count 1 with unchanged formal evidence. |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -280,10 +290,12 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 
 - RED evidence: the repository-marketplace test failed before `plugins/ariadne/` and its marketplace existed.
 - RED evidence for remote synchronization: the stale-remote fixture failed because `refs/heads/main` remained at the pre-promotion commit while both release tags were pushed.
+- RED evidence for activation recovery: after a simulated post-promotion activation failure, the repeated exact promotion returned idempotent success but called `_activate()` zero times; the regression expected one call.
 - GREEN evidence for remote synchronization: release tests pass after explicit-refspec atomic push; the conflict fixture leaves remote `main` and `vX.Y.Z` unchanged and records no `gh release create` call.
-- Complete GREEN evidence: all 47 unit and subprocess tests pass, including existing-release remote repair, local-main ancestry rejection, mutating repository-check rejection, formal artifact binding, ambient-variable exclusion, and caller-only `PATH` exclusion.
+- GREEN evidence for activation recovery: the repeated exact promotion calls `_activate()` once only when requested, while lock bytes, artifact bytes, local `main`, and the formal tag remain unchanged; the no-activation repeat calls it zero times.
+- Complete GREEN evidence: all 49 unit and subprocess tests pass, including activation recovery, existing-release remote repair, local-main ancestry rejection, mutating repository-check rejection, formal artifact binding, ambient-variable exclusion, and caller-only `PATH` exclusion.
 - Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
-- Fresh verification: Plugin and Skill validators pass on v1.1.1 `plugins/ariadne/`; `git diff --check` passes.
-- Realistic outcome check: `independence --repo . --json` found zero references against 11 external discovered Skill identities, installed only `ariadne@ariadne-standalone` 1.1.1 into a fresh profile, verified exact installed bytes under isolated `CODEX_HOME`, and passed the bundled launcher check.
+- Fresh verification: Plugin and Skill validators pass on v1.1.2 `plugins/ariadne/`; `git diff --check` passes.
+- Realistic outcome check: `independence --repo . --json` found zero references against 11 external discovered Skill identities, installed only `ariadne@ariadne-standalone` 1.1.2 into a fresh profile, verified exact installed bytes under isolated `CODEX_HOME`, and passed the bundled launcher check. Payload SHA-256 is `8514f47b61a878169aa8d1faa395d09b3fd3b1b95e5572509d65f90268775c7e`; artifact SHA-256 is `c985165a0d1ceb902c4cdd201dd0472e6ac5a95d8a4eb9b3086405f16d9938af`.
 - Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
 - Remaining risks: static scanning cannot prove unattributed semantic provenance, a weak project-declared standalone check can under-test behavior, and a remote without atomic-push support blocks release by design. The w5:p3 review returned `PASS`; its sole low-severity R-01 test gap was closed with a dedicated `E_RELEASE_MAIN` regression. Current publication state is intentionally external to this SDD and must be read from the formal lock, immutable Git refs, GitHub Release metadata, or the linked PDCA／Wiki evidence.

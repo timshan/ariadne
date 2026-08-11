@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import lifecycle
+from helpers import init_repo
 
 
 class ActivationTests(unittest.TestCase):
@@ -41,6 +42,61 @@ else:
             commands = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
             self.assertIn(["plugin", "marketplace", "add", str(root / "channel")], commands)
             self.assertIn(["plugin", "add", "sample-plugin@skill-formal", "--json"], commands)
+
+    def test_repeated_promotion_retries_failed_activation_without_rewriting_formal_state(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            repo = init_repo(root / "repo")
+            channel = root / "channel"
+
+            with mock.patch.object(
+                lifecycle,
+                "_activate",
+                side_effect=lifecycle.LifecycleError("E_CODEX_INSTALL: simulated failure"),
+            ):
+                with self.assertRaisesRegex(lifecycle.LifecycleError, "E_CODEX_INSTALL"):
+                    lifecycle.promote(
+                        repo,
+                        "1.0.0",
+                        channel=channel,
+                        apply=True,
+                        activate=True,
+                    )
+
+            lock_before = (channel / "formal-lock.json").read_bytes()
+            artifact = channel / "versions" / "sample-plugin" / "1.0.0" / "sample-plugin-1.0.0.zip"
+            artifact_before = artifact.read_bytes()
+            main_before = lifecycle.git_output(repo, "rev-parse", "main")
+            tag_before = lifecycle.git_output(repo, "rev-parse", "formal/v1.0.0")
+
+            with mock.patch.object(lifecycle, "_activate") as activate:
+                result = lifecycle.promote(
+                    repo,
+                    "1.0.0",
+                    channel=channel,
+                    apply=True,
+                    activate=True,
+                )
+
+            self.assertEqual(result["action"], "idempotent")
+            activate.assert_called_once_with(channel.resolve(), "sample-plugin", "1.0.0")
+            self.assertEqual(lock_before, (channel / "formal-lock.json").read_bytes())
+            self.assertEqual(artifact_before, artifact.read_bytes())
+            self.assertEqual(main_before, lifecycle.git_output(repo, "rev-parse", "main"))
+            self.assertEqual(tag_before, lifecycle.git_output(repo, "rev-parse", "formal/v1.0.0"))
+
+    def test_repeated_promotion_without_activation_does_not_activate(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            repo = init_repo(root / "repo")
+            channel = root / "channel"
+            lifecycle.promote(repo, "1.0.0", channel=channel, apply=True)
+
+            with mock.patch.object(lifecycle, "_activate") as activate:
+                result = lifecycle.promote(repo, "1.0.0", channel=channel, apply=True)
+
+            self.assertEqual(result["action"], "idempotent")
+            activate.assert_not_called()
 
 
 if __name__ == "__main__":

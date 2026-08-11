@@ -810,6 +810,8 @@ def promote(repo: Path, version: str, *, channel: Path | None = None, apply: boo
             and git_output(repo, "rev-parse", "main") == preflight["commit"]
             and same_tree(version_dir / "payload", channel / "plugins" / preflight["plugin"])
         ):
+            if activate:
+                _activate(channel, preflight["plugin"], version)
             return {**preflight, "action": "idempotent", "channel": str(channel), "sha256": built["sha256"]}
         git_run(repo, "switch", "main")
         try:

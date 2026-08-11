@@ -23,7 +23,7 @@ class AriadneSkillTests(unittest.TestCase):
         )
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ariadne")
-        self.assertEqual(manifest["version"], "1.1.1")
+        self.assertEqual(manifest["version"], "1.1.2")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertIn("name: ariadne", skill)
         self.assertIn("description:", skill)

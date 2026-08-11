@@ -79,6 +79,7 @@ Dry-run is always allowed. Before an Agent constructs or runs any `--apply` comm
 ## Activation, release, and rollback
 
 - Activation checks configured marketplaces and installed Plugins using structured Codex JSON. A same-name marketplace pointing elsewhere is a conflict.
+- A repeated applied promotion whose artifact, lock, current formal payload, `main`, and formal tag already match must reconcile activation when requested before returning idempotent success. It must not rebuild or rewrite the matching formal evidence; without activation requested, it runs no activation command.
 - Release checks the formal lock and tag before any GitHub write. Existing releases are downloaded and hashed. Release synchronizes local `main` plus the exact formal/release tags with explicit refspecs in one non-forced atomic push; any rejected ref leaves all three remote refs unchanged and blocks GitHub Release creation. It then attaches the locked artifact plus checksum.
 - Rollback selects an earlier immutable formal payload, verifies its checksum, atomically switches the current marketplace payload, and reinstalls it. It never performs destructive Git reset or cache editing.
 

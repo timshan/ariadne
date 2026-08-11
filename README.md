@@ -103,6 +103,7 @@ plugins/ariadne/                   complete installable Plugin
   lifecycle.py                     standard-library controller
   skills/ariadne/                  self-contained Skill, launcher, and policy
 docs/SDD.md                        design, UML, risks, and acceptance criteria
+CHANGELOG.md                       unreleased and released change history
 tests/                             lifecycle and packaging tests
 lifecycle.json                     this repository's lifecycle contract
 lifecycle.py                       maintainer-friendly repository entry point
@@ -115,10 +116,12 @@ Only `plugins/ariadne/` is installable. Repository documentation, tests, and gen
 ```bash
 python3 -m unittest discover -s tests -v
 python3 lifecycle.py independence --repo . --json
-python3 lifecycle.py promote --repo . --version 1.1.1
+python3 lifecycle.py promote --repo . --version 1.1.2
 ```
 
 The design and expected behavior are documented in [docs/SDD.md](docs/SDD.md). Contribution rules, including AI contribution disclosure, are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Every Ariadne change must update the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md) in the same diff. Repository-only documentation remains outside the installable Plugin and does not by itself require a runtime release.
 
 ## Project contributors
 
