@@ -205,7 +205,7 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 | REQ-008 | AC-007 | tests/test_rollback.py | lifecycle.py channel switch | Pass |
 | REQ-009 | AC-008 | tests/test_inventory.py | lifecycle.py inventory | Pass |
 | REQ-010 | AC-009 | tests/test_policy_contract.py and tests/test_ariadne_skill.py | packaged policy and Plugin boundary | Pass |
-| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 28-test suite and Plugin/Skill validators pass; final nested-layout isolated acceptance is pending. |
+| REQ-011 | AC-010 | tests/test_ariadne_skill.py and isolated profile acceptance | plugins/ariadne/.codex-plugin/plugin.json, plugins/ariadne/skills/ariadne, plugins/ariadne/lifecycle.py | 28-test suite, Plugin/Skill validators, and isolated nested-layout install pass. |
 
 ## Staged rollout, monitoring, and rollback
 
@@ -220,6 +220,6 @@ Special evidence: migration rehearsal, source/runtime hash comparison, tag/artif
 - GREEN evidence: 28 unit and subprocess tests pass after the package-boundary and cache-leak refactors.
 - Refactor or exception: repository entry point delegates to the single packaged controller; no second controller implementation is maintained.
 - Fresh verification: Plugin and Skill validators pass on `plugins/ariadne/`.
-- Realistic outcome check: the prior root-layout build passed isolated installation; the final nested marketplace layout requires one fresh isolated install before promotion.
+- Realistic outcome check: an isolated Codex profile installed only `ariadne@ariadne` from the nested marketplace; the installed launcher exposed all controller commands and contained no source Python cache.
 - Security／performance／migration evidence: symlink, path traversal, URL redaction, dirty-tree, duplicate-name, artifact drift, and idempotency tests pass.
 - Remaining risks: GitHub universal directory submission remains outside v1; public installation commands require verification after repository creation.
